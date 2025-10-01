@@ -1,0 +1,49 @@
+Bootstrap: docker
+From: ubuntu:22.04
+
+%environment
+    export PYTHONPATH=/usr/local/lib/python3.10/site-packages:$PYTHONPATH
+    export PATH=/usr/local/bin:$PATH
+
+%post
+    # System Updates & Tools
+    apt-get update && apt-get install -y \
+        python3 python3-pip python3-venv \
+        git wget curl build-essential
+
+    # Python Packages für AI-Benchmarks
+    pip3 install --upgrade pip
+    pip3 install numpy pandas torch torchvision tensorflow dask matplotlib
+
+    # Optional: Tools für Monitoring
+    pip3 install prometheus_client
+
+    # Test Scripts Ordner erstellen
+    mkdir -p /opt/benchmarks
+    cd /opt/benchmarks
+
+    # Beispiel Benchmark Script
+    cat << 'EOF' > run_inference.py
+import torch
+import time
+
+# Einfaches Torch-Modell
+model = torch.nn.Linear(1000, 1000)
+data = torch.randn(1000, 1000)
+
+start = time.time()
+for _ in range(100):
+    out = model(data)
+end = time.time()
+
+print(f"Inference finished in {end - start:.4f} seconds")
+EOF
+
+%runscript
+    echo "Welcome to AI Benchmark Container!"
+    echo "Available commands: run_inference"
+    if [ "$1" = "run_inference" ]; then
+        python3 /opt/benchmarks/run_inference.py
+    else
+        exec "$@"
+    fi
