@@ -7,6 +7,7 @@
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=1
 
+module load env/release/2023.1
 module load Apptainer/1.2.4-GCCcore-12.3.0
 
 # Container ausführen
