@@ -149,6 +149,62 @@ The framework consists of five main modules: **Servers**, **Clients**, **Monitor
 
 
 
+# Structure
+
+team10_EUMASTER4HPC2526_challenge(ai-benchmark-factory)/
+│
+├── container/                     # Apptainer container & benchmark code
+│   ├── ai-benchmark.def           # Container definition file
+│   ├── ai-benchmark.sif           # Built container image (do NOT store in repo!)
+│   ├── benchmarks/                # All benchmark scripts
+│   │   ├── run_inference.py
+│   │   ├── gpu_benchmark.py
+│   │   ├── ollama_benchmark.py
+│   │   └── utils/                 # Optional helper functions (timing, logging, etc.)
+│   ├── requirements.txt           # Optional Python dependencies
+│   └── README.md
+│
+├── cluster/                       # SLURM / Cluster integration
+│   ├── jobs/                      # Job scripts for SLURM
+│   │   ├── run_cpu_job.sh
+│   │   ├── run_gpu_job.sh
+│   │   └── run_ollama_job.sh
+│   ├── monitor/                   # Monitoring & logs
+│   │   ├── slurm_parser.py        # Reads job logs and extracts metrics
+│   │   ├── prometheus_exporter.py # Optional metrics exporter for Prometheus
+│   │   └── logs/                  # Job logs, error logs
+│   ├── results/                   # Benchmark results (CSV, JSON)
+│   │   ├── cpu_bench_results.csv
+│   │   ├── gpu_bench_results.csv
+│   │   └── ollama_bench_results.json
+│   └── README.md
+│
+├── web/                           # Web interface / user layer
+│   ├── ui/                        # Frontend (e.g., Streamlit or React)
+│   │   ├── app.py                 # Streamlit or Dash app entrypoint
+│   │   ├── components/            # Buttons, plots, tables
+│   │   └── static/                # Icons, CSS/JS files
+│   ├── api/                       # Backend (Flask or FastAPI)
+│   │   ├── main.py                # API entrypoint (submit_job, get_results)
+│   │   ├── slurm_interface.py     # Submits Slurm jobs via `sbatch`
+│   │   ├── results_handler.py     # Loads results from cluster/results/
+│   │   └── config.yaml            # API config (paths, cluster user, etc.)
+│   ├── notebooks/                 # Alternative: Jupyter notebooks for interaction
+│   │   ├── Benchmark_Dashboard.ipynb
+│   │   └── Ollama_Experiments.ipynb
+│   └── README.md
+│
+├── docs/                          # Documentation & architecture
+│   ├── architecture-diagram.png   # Can be auto-generated
+│   ├── workflow.md                # End-to-end pipeline description
+│   └── setup_instructions.md      # Setup guide for local & HPC environment
+│
+├── scripts/                       # Helper scripts (builds, uploads, etc.)
+│   ├── build_container.sh         # Builds ai-benchmark.sif
+│   ├── upload_to_meluxina.sh      # Rsync upload script
+│   └── run_local_test.sh          # Runs container locally for testing
+│
+├── .gitignore                     # Ignores l
 
 
 
