@@ -12,13 +12,25 @@ From: ubuntu:22.04
     pip3 install --upgrade pip
     pip3 install numpy pandas torch torchvision tensorflow dask matplotlib prometheus_client
 
+    # Copy benchmarks into container
     mkdir -p /opt/benchmarks
+    cp -r /benchmarks/* /opt/benchmarks/
 
 %runscript
     echo "Welcome to AI Benchmark Container!"
-    echo "Available commands: run_inference"
-    if [ "$1" = "run_inference" ]; then
-        python3 /opt/benchmarks/run_inference.py
-    else
-        exec "$@"
-    fi
+    echo "Available commands: run_inference, run_gpu, run_ollama"
+
+    case "$1" in
+        run_inference)
+            python3 /opt/benchmarks/run_inference.py
+            ;;
+        run_gpu)
+            python3 /opt/benchmarks/gpu_benchmark.py
+            ;;
+        run_ollama)
+            python3 /opt/benchmarks/ollama_benchmark.py
+            ;;
+        *)
+            exec "$@"
+            ;;
+    esac
