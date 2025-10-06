@@ -1,0 +1,24 @@
+Bootstrap: docker
+From: ubuntu:22.04
+
+%environment
+    export PYTHONPATH=/usr/local/lib/python3.10/site-packages:$PYTHONPATH
+    export PATH=/usr/local/bin:$PATH
+
+%post
+    apt-get update && apt-get install -y \
+        python3 python3-pip python3-venv git wget curl build-essential
+
+    pip3 install --upgrade pip
+    pip3 install numpy pandas torch torchvision tensorflow dask matplotlib prometheus_client
+
+    mkdir -p /opt/benchmarks
+
+%runscript
+    echo "Welcome to AI Benchmark Container!"
+    echo "Available commands: run_inference"
+    if [ "$1" = "run_inference" ]; then
+        python3 /opt/benchmarks/run_inference.py
+    else
+        exec "$@"
+    fi

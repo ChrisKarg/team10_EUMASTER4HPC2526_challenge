@@ -153,22 +153,24 @@ The framework consists of five main modules: **Servers**, **Clients**, **Monitor
 
 team10_EUMASTER4HPC2526_challenge(ai-benchmark-factory)/
 │
-├── container/                     # Apptainer container & benchmark code
-│   ├── ai-benchmark.def           # Container definition file
-│   ├── ai-benchmark.sif           # Built container image (do NOT store in repo!)
+├── container/                     # Apptainer containers & benchmark code
+│   ├── ai-benchmark.def           # Benchmark container definition
+│   ├── ai-benchmark.sif           # Built benchmark container (do NOT store in repo!)
+│   ├── ollama.def                 # Ollama container definition
+│   ├── ollama.sif                 # Built Ollama container (do NOT store in repo!)
 │   ├── benchmarks/                # All benchmark scripts
 │   │   ├── run_inference.py
 │   │   ├── gpu_benchmark.py
-│   │   ├── ollama_benchmark.py
+│   │   ├── ollama_benchmark.py    # Scripts that interact with Ollama service
 │   │   └── utils/                 # Optional helper functions (timing, logging, etc.)
-│   ├── requirements.txt           # Optional Python dependencies
+│   ├── requirements.txt           # Optional Python dependencies for benchmark container
 │   └── README.md
 │
 ├── cluster/                       # SLURM / Cluster integration
 │   ├── jobs/                      # Job scripts for SLURM
 │   │   ├── run_cpu_job.sh
 │   │   ├── run_gpu_job.sh
-│   │   └── run_ollama_job.sh
+│   │   └── run_ollama_job.sh     # Starts Ollama container and runs Ollama-related jobs
 │   ├── monitor/                   # Monitoring & logs
 │   │   ├── slurm_parser.py        # Reads job logs and extracts metrics
 │   │   ├── prometheus_exporter.py # Optional metrics exporter for Prometheus
@@ -200,11 +202,14 @@ team10_EUMASTER4HPC2526_challenge(ai-benchmark-factory)/
 │   └── setup_instructions.md      # Setup guide for local & HPC environment
 │
 ├── scripts/                       # Helper scripts (builds, uploads, etc.)
-│   ├── build_container.sh         # Builds ai-benchmark.sif
+│   ├── build_ai_benchmark.sh      # Builds ai-benchmark.sif
+│   ├── build_ollama.sh            # Builds ollama.sif
 │   ├── upload_to_meluxina.sh      # Rsync upload script
-│   └── run_local_test.sh          # Runs container locally for testing
+│   └── run_local_test.sh          # Runs containers locally for testing
 │
-├── .gitignore                     # Ignores l
+├── .gitignore                     # Ignores large files (e.g., .sif, logs)
+├── LICENSE
+└── README.md                      # Main project description
 
 
 

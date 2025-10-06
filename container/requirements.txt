@@ -1,0 +1,8 @@
+torch
+torchvision
+tensorflow
+numpy
+pandas
+dask
+matplotlib
+prometheus_client

@@ -1,0 +1,37 @@
+Bootstrap: docker
+From: ubuntu:22.04
+
+%environment
+    # ============================================
+    # Environment variables inside the container
+    # ============================================
+    export PATH=/usr/local/bin:$PATH
+    export OLLAMA_HOME=/opt/ollama
+    export PYTHONUNBUFFERED=1
+
+%post
+    # ============================================
+    # System updates & core tools
+    # ============================================
+    apt-get update && apt-get install -y \
+        python3 python3-pip python3-venv \
+        git wget curl build-essential ca-certificates
+
+    # ============================================
+    # Create Ollama folder
+    # ============================================
+    mkdir -p /opt/ollama
+    cd /opt/ollama
+
+    # ============================================
+    # Install Ollama via Docker pull (Apptainer style)
+    # ============================================
+    # Using apptainer pull inside post isn't possible,
+    # so user needs to pull locally: `apptainer pull docker://ollama/ollama`
+    echo "After building this container, run on host:"
+    echo "apptainer pull docker://ollama/ollama"
+
+%runscript
+    echo "Welcome to Ollama container!"
+    echo "Use: ollama query 'Your prompt here'"
+    exec "$@"
