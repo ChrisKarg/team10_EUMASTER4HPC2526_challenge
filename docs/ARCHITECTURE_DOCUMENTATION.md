@@ -4,7 +4,9 @@
 
 The HPC Benchmarking Orchestrator is a sophisticated system designed to manage containerized services and benchmark workloads on High-Performance Computing (HPC) clusters using SLURM. The system provides automated deployment, monitoring, and lifecycle management of distributed benchmarking experiments.
 
+<span style="background-color: #fff9b1; font-size: 1.35em; font-weight: bold;">
 TODO: Monitor and Logs are not taken into account for now, and CLI interface is though as a minimal interface to run tests
+</span>
 
 ## System Architecture
 
@@ -198,7 +200,6 @@ classDiagram
     ClientsModule ..> ClientConfig : creates
     BaseModule ..> JobInfo : manages
     JobInfo ..> ServiceStatus : has status
-```
 ```
 
 ### Simplified Component View
@@ -410,6 +411,9 @@ sequenceDiagram
 ```
 
 ## Key Design Patterns
+<span style="background-color: #fff9b1; font-size: 1.35em; font-weight: bold;">
+This whole part is to be revised when we'll actually start writing code
+</span>
 
 ### 1. **Abstract Factory Pattern**
 - `BaseModule` serves as an abstract base for `ServersModule` and `ClientsModule`
@@ -483,17 +487,3 @@ sequenceDiagram
 - **SLURM ACLs**: Resource access controlled by SLURM policies
 - **Container Isolation**: Services isolated through container boundaries
 - **File Permissions**: Proper permissions for scripts and data files
-
-## Deployment Architecture
-
-### Container Management
-- **Singularity Integration**: Native support for Singularity containers
-- **Image Building**: Automatic container building on HPC nodes
-- **Registry Support**: Support for container registries and local images
-
-### Resource Management
-- **GPU Allocation**: Automatic GPU resource allocation for workloads
-- **Memory Management**: Dynamic memory allocation based on service requirements
-- **Network Configuration**: Automatic port allocation and networking setup
-
-This architecture provides a robust, scalable, and maintainable foundation for managing complex benchmarking experiments on HPC infrastructure.
