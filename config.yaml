@@ -1,0 +1,68 @@
+# HPC Orchestrator Configuration File
+
+# HPC cluster connection settings
+hpc:
+  hostname: "login.lxp.lu"  # MeluXina login node
+  username: "u103235"
+  # password: "your_password"  # Use either password or key_filename
+  key_filename: "~/.ssh/id_ed25519_mlux"  # Path to SSH private key
+  port: 8822
+
+# SLURM default configuration
+slurm:
+  account: "p200981"  # Replace with your project account
+  partition: "gpu"    # Default partition
+  qos: "default"      # Quality of Service
+  time: "01:00:00"    # Default job time limit
+  nodes: 1            # Default number of nodes
+  ntasks: 1           # Default number of tasks
+  ntasks_per_node: 1  # Default tasks per node
+
+# Directory paths
+services_dir: "recipes/services"
+clients_dir: "recipes/clients"
+scripts_dir: "scripts"
+results_dir: "results"
+logs_dir: "logs"
+
+# Container settings
+containers:
+  base_path: "/mnt/tier2/users/u103235"  # Path on HPC cluster where containers are stored
+  auto_build: true  # Automatically build containers if they don't exist
+  build_timeout: "30:00"  # Time limit for container builds (30 minutes)
+  force_rebuild: false  # Force rebuild even if container exists
+  docker_sources:  # Docker sources for automatic building
+    ollama: "docker://ollama/ollama:latest"
+    postgres: "docker://postgres:latest"
+    chroma: "docker://chromadb/chroma:latest"
+    benchmark_client: "docker://python:3.11-slim"
+  images:
+    ollama: "ollama_latest.sif"
+    postgres: "postgres_latest.sif"
+    chroma: "chroma_latest.sif"
+    benchmark_client: "benchmark_client.sif"
+
+# Monitoring settings (placeholder for future implementation)
+monitoring:
+  enabled: false
+  prometheus_endpoint: "http://localhost:9090"
+  grafana_endpoint: "http://localhost:3000"
+
+# Logging settings
+logging:
+  level: "INFO"
+  file: "orchestrator.log"
+  max_size: "10MB"
+  backup_count: 5
+
+# Benchmark settings
+benchmarks:
+  default_duration: 300  # seconds
+  max_duration: 3600     # seconds
+  default_timeout: 120   # seconds for service startup
+  
+  # Results collection
+  results:
+    format: "json"
+    compress: true
+    retention_days: 30

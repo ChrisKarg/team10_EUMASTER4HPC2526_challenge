@@ -1,0 +1,38 @@
+# Ollama Benchmark Client Configuration
+client:
+  name: ollama_benchmark
+  description: Benchmark client for Ollama LLM service
+  container_image: benchmark_client.sif
+  workload_type: ollama_benchmark
+  duration: 300  # 5 minutes
+
+  # Resource requirements (same partition as service for networking)
+  resources:
+    memory: "4GB"
+    cpu: 2
+    slurm:
+      partition: gpu  # Same partition as service for better connectivity
+      time: "00:30:00"
+
+  # Environment variables
+  environment:
+    OLLAMA_TLS_SKIP_VERIFY: "1"
+    BENCHMARK_DURATION: "300"
+    BENCHMARK_TYPE: "ollama"
+
+  # Benchmark parameters - endpoint will be auto-resolved by orchestrator
+  parameters:
+    # endpoint: auto-resolved from target_service configuration
+    model: "llama2"
+    num_requests: 10      # Reduced for testing
+    concurrent_requests: 2 # Reduced for testing  
+    prompt_length: 50     # Reduced for testing
+    max_tokens: 100       # Reduced for testing
+    output_file: "/tmp/ollama_benchmark_results.json"
+    wait_for_service: 120  # Wait longer for service to be ready
+
+  # Target service configuration (used by orchestrator for service discovery)
+  target_service:
+    type: ollama
+    port: 11434
+    health_check_endpoint: "/api/tags"

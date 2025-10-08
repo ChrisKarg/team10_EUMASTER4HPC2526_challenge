@@ -1,0 +1,15 @@
+# Python dependencies for HPC Orchestrator
+# Core dependencies
+pyyaml>=6.0
+paramiko>=2.7.0
+scp>=0.14.0
+
+# Optional dependencies for enhanced functionality
+requests>=2.25.0
+click>=8.0.0
+rich>=10.0.0
+
+# Development dependencies (optional)
+pytest>=6.0.0
+black>=21.0.0
+flake8>=3.8.0

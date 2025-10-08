@@ -1,1 +1,6 @@
 ai-benchmark.sif
+venv_meluxina_demo/
+*.pyc
+__pycache__/
+.env
+*.log

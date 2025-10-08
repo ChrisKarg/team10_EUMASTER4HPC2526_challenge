@@ -1,0 +1,34 @@
+# Ollama Service Configuration
+service:
+  name: ollama
+  description: Ollama LLM inference service
+  container_image: ollama_latest.sif
+  command: ollama
+  args: ["serve"]
+
+  # Resource requirements
+  resources:
+    gpu: 1
+    memory: "16GB"
+    slurm:
+      partition: gpu
+      time: "02:00:00"
+      gres: "gpu:1"
+
+  # Environment variables for container networking
+  environment:
+    OLLAMA_TLS_SKIP_VERIFY: "1"
+    OLLAMA_HOST: "0.0.0.0:11434"  # Bind to all interfaces
+    OLLAMA_KEEP_ALIVE: "5m"       # Keep model loaded
+    CUDA_VISIBLE_DEVICES: "0"
+    
+  # Exposed ports (accessible from other containers on same node)
+  ports:
+    - 11434
+
+  # Health check configuration
+  health_check:
+    endpoint: "http://localhost:11434/api/tags"
+    timeout: 30
+    retries: 5
+    interval: 10

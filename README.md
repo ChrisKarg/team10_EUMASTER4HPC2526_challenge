@@ -1,311 +1,467 @@
-# Student Challenge 2025-2026 (Benchmarking AI Factories on MeluXina supercomputer)
+# HPC AI Benchmarking Orchestrator
 
-The objective of this challenge is to prepare students for the upcoming AI Factories in the European Union. These AI Factories will harness the power of next-generation HPC and AI systems to revolutionise data processing, analytics, and model deployment. Through this challenge, students will gain practical skills in AI benchmarking, system monitoring, and real-world deployment scenarios—equipping them to design and operate future AI Factory workflows at scale.
+A modular Python orchestrator for running containerized AI benchmarking workloads on HPC clusters via SLURM. This system enables automated deployment and benchmarking of AI services like LLM inference servers, databases, and vector stores.
 
+## 🏗️ Architecture
 
+The orchestrator follows a modular design with five main components:
 
+```
+[CLI Interface] → [Orchestrator] → [SSH] → [SLURM] → [Containers]
+     ↓               ↓              ↓        ↓          ↓
+[YAML Recipes]  [Servers &      [HPC]  [Job Queue] [Services &
+                 Clients]              [Scheduler]  Benchmarks]
+```
 
-# High-Level Architecture Design
+### Core Modules
 
-## Overview
-The **Unified Benchmarking Framework for AI Workflows** is a modular system to orchestrate, benchmark, monitor, and log AI workflows in a reproducible and scalable HPC or Kubernetes environment.  
+- **Servers Module**: Manages deployment and lifecycle of services (Ollama, PostgreSQL, Vector DBs)
+- **Clients Module**: Launches benchmark workloads against target services
+- **Interface Module**: Central orchestration and user-facing management
+- **Script Generator**: Creates SLURM batch scripts from YAML recipes
+- **SSH Client**: Handles remote HPC operations and job submission
 
-The framework consists of five main modules: **Servers**, **Clients**, **Monitors**, **Logs**, and **Interface**. Each module exposes a well-defined set of functions for orchestration. All services and clients run in **Apptainer containers** with all dependencies pre-installed.
+## 🚀 Quick Start
+
+### 1. Setup
+
+```bash
+# Clone the repository
+cd orchestrator
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Configure for your HPC cluster
+cp config.yaml.example config.yaml
+# Edit config.yaml with your cluster details
+```
+
+### 2. Configure HPC Connection
+
+Edit `config.yaml`:
+
+```yaml
+hpc:
+  hostname: "login.lxp.lu"  # Your HPC login node
+  username: "your_username"
+  key_filename: "~/.ssh/id_rsa"  # SSH key path
+
+slurm:
+  account: "p200981"  # Your SLURM account
+  partition: "gpu"    # Default partition
+```
+
+### 3. Run Your First Benchmark
+
+```bash
+# List available services and clients
+python main.py --list-services
+python main.py --list-clients
+
+# Run a complete Ollama benchmark
+python main.py --recipe recipes/ollama_complete.yaml
+
+# Check system status
+python main.py --status
+```
+
+## 📋 Usage Examples
+
+### Command Line Interface
+
+```bash
+# List available services
+python main.py --list-services
+
+# Run a specific recipe
+python main.py --recipe recipes/ollama_complete.yaml
+
+# Interactive mode
+python main.py
+
+# Verbose logging
+python main.py --verbose --recipe recipes/postgresql_complete.yaml
+```
+
+### Programmatic Usage
+
+```python
+from src.orchestrator import BenchmarkOrchestrator
+
+# Initialize orchestrator
+interface = BenchmarkOrchestrator('config.yaml')
+
+# Load and run a recipe
+recipe = interface.load_recipe('recipes/ollama_complete.yaml')
+session_id = interface.start_benchmark_session(recipe)
+
+# Monitor status
+status = interface.show_servers_status()
+print(f"Running services: {status}")
+
+# Generate report
+interface.generate_report(session_id, 'results/report.yaml')
+```
+
+## 📁 Project Structure
+
+```
+orchestrator/
+├── main.py                 # CLI entry point
+├── config.yaml            # Configuration file
+├── requirements.txt        # Python dependencies
+├── src/                    # Core modules
+│   ├── orchestrator.py     # Main orchestrator engine
+│   ├── servers.py          # Services management
+│   ├── clients.py          # Benchmark clients
+│   ├── ssh_client.py       # HPC SSH operations
+│   ├── script_generator.py # SLURM script generation
+│   └── base.py             # Base classes and enums
+├── recipes/                # YAML recipe definitions
+│   ├── services/           # Service templates
+│   │   ├── ollama.yaml     # Ollama LLM service
+│   │   ├── postgresql.yaml # PostgreSQL database
+│   │   └── chroma.yaml     # Vector database
+│   ├── clients/            # Client templates
+│   │   ├── ollama_benchmark.yaml
+│   │   ├── postgresql_benchmark.yaml
+│   │   └── vector_benchmark.yaml
+│   ├── ollama_complete.yaml      # Complete recipes
+│   └── postgresql_complete.yaml
+├── benchmark_scripts/      # Benchmark implementation scripts
+│   └── ollama_benchmark.py # Ollama benchmark client
+└── scripts/               # Generated SLURM scripts (auto-created)
+```
+
+## 🔧 Configuration
+
+### HPC Connection
+
+Configure your HPC cluster connection in `config.yaml`:
+
+```yaml
+hpc:
+  hostname: "login.lxp.lu"
+  username: "your_username"
+  key_filename: "~/.ssh/id_ed25519_mlux"  # or use password
+  port: 8822
+
+slurm:
+  account: "p200981"    ## id for the account (in this case, project id)
+  partition: "gpu"
+  qos: "default"
+  time: "01:00:00"
+```
+
+### Container Images
+
+Ensure your container images are available on the HPC cluster:
+
+```yaml
+containers:
+  base_path: "/path/to/containers"
+  images:
+    ollama: "ollama_latest.sif"
+    postgres: "postgres_latest.sif" 
+    benchmark_client: "benchmark_client.sif"
+```
+
+## 📝 Recipe Format
+
+### Complete Recipe Example
+
+```yaml
+# ollama_complete.yaml
+apiVersion: v1
+kind: BenchmarkRecipe
+metadata:
+  name: ollama-llm-benchmark
+  description: End-to-end benchmark of Ollama LLM service
+
+service:
+  type: ollama
+  name: ollama-server
+  container_image: ollama_latest.sif
+  command: ollama
+  args: ["serve"]
+  
+  resources:
+    gpu: 1
+    memory: "16GB"
+    slurm:
+      partition: gpu
+      time: "02:00:00"
+  
+  environment:
+    OLLAMA_TLS_SKIP_VERIFY: "1"
+    OLLAMA_HOST: "0.0.0.0:11434"
+
+client:
+  type: ollama_benchmark
+  name: ollama-benchmark-client
+  workload_type: ollama_benchmark
+  duration: 300
+  
+  parameters:
+    model: "llama2"
+    num_requests: 50
+    concurrent_requests: 5
+    output_file: "/tmp/ollama_benchmark_results.json"
+```
+
+### Service-Only Recipe
+
+```yaml
+# service_only.yaml
+service:
+  type: ollama
+  resources:
+    gpu: 1
+    memory: "16GB"
+  environment:
+    OLLAMA_HOST: "0.0.0.0:11434"
+```
+
+### Client-Only Recipe
+
+```yaml
+# client_only.yaml
+client:
+  type: ollama_benchmark
+  duration: 300
+  parameters:
+    model: "llama2"
+    num_requests: 100
+```
+
+## 🎯 Supported Services
+
+### Ollama (LLM Inference)
+- **Container**: `ollama_latest.sif`
+- **Ports**: 11434
+- **GPU**: Required
+- **Models**: llama2, codellama, mistral, etc.
+
+### PostgreSQL (Database)
+- **Container**: `postgres_latest.sif` 
+- **Ports**: 5432
+- **Resources**: CPU-focused
+- **Features**: CRUD benchmarks, connection pooling
+
+### Chroma (Vector Database)
+- **Container**: `chroma_latest.sif`
+- **Ports**: 8000
+- **Features**: Vector similarity search, embeddings
+
+## 🧪 Benchmark Clients
+
+### Ollama Benchmark
+- **Metrics**: Latency, throughput, tokens/sec
+- **Parameters**: Model, requests, concurrency
+- **Output**: JSON results with statistics
+
+### PostgreSQL Benchmark
+- **Metrics**: CRUD performance, connection handling
+- **Parameters**: Connections, transactions, table size
+- **Workloads**: Read/write patterns, stress tests
+
+### Vector Database Benchmark
+- **Metrics**: Search latency, indexing performance
+- **Parameters**: Vector dimensions, collection size
+- **Workloads**: Similarity search, bulk operations
+
+## 📊 Monitoring & Results
+
+### Status Monitoring
+
+```python
+# Check running services
+status = interface.show_servers_status()
+
+# Check benchmark clients
+clients = interface.show_clients_status()
+
+# System overview
+system = interface.get_system_status()
+```
+
+### Results Collection
+
+Results are automatically collected in JSON format:
+
+```json
+{
+  "benchmark_config": {
+    "model": "llama2",
+    "num_requests": 50,
+    "concurrent_requests": 5
+  },
+  "results": {
+    "success_rate": 98.0,
+    "latency_stats": {
+      "mean": 1.23,
+      "p95": 2.45,
+      "p99": 3.67
+    },
+    "throughput": {
+      "tokens_per_second": 150.5,
+      "requests_per_second": 12.3
+    }
+  }
+}
+```
+
+## 🔌 Extending the Framework
+
+### Adding New Services
+
+1. Create service definition in `recipes/services/`:
+
+```yaml
+# recipes/services/my_service.yaml
+name: my_service
+container_image: my_service.sif
+command: my_service_command
+resources:
+  memory: "8GB"
+environment:
+  SERVICE_PORT: "8080"
+ports:
+  - 8080
+```
+
+2. Add service-specific setup in `script_generator.py`:
+
+```python
+def _generate_my_service_setup(self) -> List[str]:
+    return [
+        "# My service setup",
+        "export MY_SERVICE_CONFIG=production",
+        ""
+    ]
+```
+
+### Adding New Benchmark Clients
+
+1. Create client definition in `recipes/clients/`:
+
+```yaml
+# recipes/clients/my_benchmark.yaml
+name: my_benchmark
+workload_type: my_benchmark
+parameters:
+  duration: 300
+  connections: 10
+```
+
+2. Implement benchmark script in `benchmark_scripts/`:
+
+```python
+# benchmark_scripts/my_benchmark.py
+class MyBenchmark:
+    def run_benchmark(self, **params):
+        # Implementation
+        pass
+```
+
+## 🐛 Troubleshooting
+
+### Common Issues
+
+1. **SSH Connection Failed**
+   - Check hostname, username, and SSH key
+   - Verify HPC cluster connectivity
+   - Test manual SSH connection
+
+2. **Job Submission Failed**
+   - Verify SLURM account and partition
+   - Check resource requirements
+   - Review cluster queue status
+
+3. **Container Not Found**
+   - Ensure container images are on HPC cluster
+   - Check container paths in config
+   - Verify Apptainer module is loaded
+
+### Debug Mode
+
+```bash
+# Enable verbose logging
+python main.py --verbose --recipe recipes/ollama_complete.yaml
+
+# Check generated scripts
+ls scripts/
+cat scripts/service_*.sh
+```
+
+### Manual Testing
+
+```bash
+# Test recipe loading
+python -c "
+from src.orchestrator import BenchmarkOrchestrator
+interface = BenchmarkOrchestrator()
+recipe = interface.load_recipe('recipes/ollama_complete.yaml')
+print(recipe)
+"
+
+# Test SSH connection
+python -c "
+from src.ssh_client import SSHClient
+client = SSHClient('login.lxp.lu', 'username')
+print(client.connect())
+"
+```
+
+## 📈 Performance Considerations
+
+### Resource Allocation
+
+- **GPU Services**: Use `partition: gpu` with appropriate `gres`
+- **Memory**: Allocate sufficient memory for models
+- **Time Limits**: Set realistic job time limits
+- **Concurrency**: Balance concurrent requests vs. resource limits
+
+### Optimization Tips
+
+- Pre-pull models to reduce startup time
+- Use persistent storage for large datasets
+- Monitor cluster utilization
+- Batch multiple benchmarks efficiently
+
+## 🤝 Contributing
+
+1. **Fork** the repository
+2. **Create** a feature branch
+3. **Add** tests for new functionality  
+4. **Submit** a pull request
+
+### Development Setup
+
+```bash
+# Install development dependencies
+pip install -r requirements.txt
+pip install pytest black flake8
+
+# Run tests
+pytest
+
+# Format code
+black src/
+flake8 src/
+```
+
+## 📄 License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## 🆘 Support
+
+- **Documentation**: Check this README and inline code comments
+- **Issues**: Report bugs via GitHub issues
+- **Discussions**: Use GitHub discussions for questions
 
 ---
 
-## Modules and Functional Design
-
-### 1. Servers Module
-**Purpose:** Manage deployment and lifecycle of services to benchmark.  
-
-**Key Methods / Functions:**
-- `start_service(recipe: dict) -> str`  
-  Launch a service defined in the recipe on one or multiple nodes. Returns a unique service ID.
-- `stop_service(service_id: str) -> bool`  
-  Stop a running service by ID.
-- `list_available_services() -> List[str]`  
-  Return a list of all supported service recipes.
-- `list_running_services() -> List[str]`  
-  Return a list of all currently running service IDs.
-- `check_service_status(service_id: str) -> dict`  
-  Return health and resource usage of a specific service.
-
-**Examples of Services:**
-- Storage: PostgreSQL, S3  
-- Inference: Triton, vLLM  
-- Vector DBs: Faiss, Milvus, Weaviate, Chroma
-
----
-
-### 2. Clients Module
-**Purpose:** Launch workloads to benchmark servers.  
-
-**Key Methods / Functions:**
-- `start_client(recipe: dict, target_service_id: str) -> str`  
-  Launch a client workload against a target service. Returns a client ID.
-- `stop_client(client_id: str) -> bool`  
-  Stop a running client by ID.
-- `list_available_clients() -> List[str]`  
-  Return all client workload recipes.
-- `list_running_clients() -> List[str]`  
-  Return currently running client IDs.
-- `check_client_status(client_id: str) -> dict`  
-  Return workload progress and resource usage.
-
-**Examples of Client Workloads:**
-- Storage: Read/write stress tests for PostgreSQL/S3  
-- Inference: Batch requests to Triton/vLLM  
-- Vector DB: Query benchmarks for Faiss, Milvus, Weaviate, Chroma
-
----
-
-### 3. Monitors Module
-**Purpose:** Collect and report metrics for servers and clients.  
-
-**Key Methods / Functions:**
-- `start_monitor(target_ids: List[str], metrics: List[str]) -> str`  
-  Start a monitoring instance for servers or clients. Returns a monitor ID.
-- `stop_monitor(monitor_id: str) -> bool`  
-  Stop the monitoring instance.
-- `list_monitors() -> List[str]`  
-  List all defined monitor configurations.
-- `list_running_monitors() -> List[str]`  
-  List currently active monitors.
-- `collect_metrics(monitor_id: str) -> dict`  
-  Return metrics collected (CPU, GPU, RAM, I/O, throughput, latency).
-- `show_metrics(monitor_id: str)`  
-  Display metrics visually (integration with Grafana dashboards).
-
----
-
-### 4. Logs Module
-**Purpose:** Aggregate and manage logs from servers and clients.  
-
-**Key Methods / Functions:**
-- `start_log_collection(target_ids: List[str]) -> str`  
-  Start collecting logs from specific services/clients. Returns a log collection ID.
-- `stop_log_collection(log_id: str) -> bool`  
-  Stop log collection.
-- `list_logs() -> List[str]`  
-  List all log collections.
-- `get_logs(log_id: str) -> dict`  
-  Retrieve collected logs in structured format (JSON/CSV).
-- `show_logs(log_id: str)`  
-  Display logs in console or web UI.
-- `save_logs(log_id: str, path: str)`  
-  Persist logs to central repository for analysis.
-
----
-
-### 5. Interface Module
-**Purpose:** Central orchestration and user-facing management of benchmark experiments.  
-
-**Key Methods / Functions:**
-- `load_recipe(file_path: str) -> dict`  
-  Load and validate a benchmark recipe.
-- `start_benchmark_session(recipe: dict) -> str`  
-  Launch an end-to-end benchmark session. Returns a session ID.
-- `stop_benchmark_session(session_id: str) -> bool`  
-  Stop an ongoing benchmark session.
-- `show_servers_status() -> dict`  
-  Query all server statuses.
-- `show_clients_status() -> dict`  
-  Query all client statuses.
-- `show_monitors_status() -> dict`  
-  Query active monitoring instances.
-- `show_logs_status() -> dict`  
-  Query available logs.
-- `generate_report(session_id: str, output_path: str)`  
-  Consolidate metrics, logs, and status into a final report.
-
----
-
-## Containerization
-- **Framework:** Apptainer containers for reproducible execution.  
-- **Inclusions:** Python, database clients, SDKs, monitoring agents.  
-- **Isolation:** Containers ensure consistent runtime environments across all nodes and GPUs.
-
----
-
-## Orchestration
-- **Scheduler:** Slurm batch scripts or K8S deployments manage jobs.  
-- **Reproducibility:** Jobs are designed to run consistently across nodes, GPUs, and clusters.
-
----
-
-## Benchmarks
-- **Target Services:** PostgreSQL, S3, Triton, vLLM, Faiss, Milvus, Weaviate, Chroma  
-- **Execution:** Scripts inside containers perform workload benchmarks.  
-- **Scalability:** Supports single-node or multi-node execution.
-
----
-
-## Monitoring & Reporting
-- **Metrics:** Collected via Prometheus exporters for CPU, GPU, RAM, I/O, throughput, latency.  
-- **Visualization:** Grafana dashboards for live comparison.  
-- **Logs & Reports:** Structured logs and CSV/JSON metrics are saved and consolidated into final reports for analysis.
-
-
-
-
-# Structure
-
-team10_EUMASTER4HPC2526_challenge(ai-benchmark-factory)/
-│
-├── container/                     # Apptainer containers & benchmark code
-│   ├── ai-benchmark.def           # Benchmark container definition
-│   ├── ai-benchmark.sif           # Built benchmark container (do NOT store in repo!)
-│   ├── ollama.def                 # Ollama container definition
-│   ├── ollama.sif                 # Built Ollama container (do NOT store in repo!)
-│   ├── benchmarks/                # All benchmark scripts
-│   │   ├── run_inference.py
-│   │   ├── gpu_benchmark.py
-│   │   ├── ollama_benchmark.py    # Scripts that interact with Ollama service
-│   │   └── utils/                 # Optional helper functions (timing, logging, etc.)
-│   ├── requirements.txt           # Optional Python dependencies for benchmark container
-│   └── README.md
-│
-├── cluster/                       # SLURM / Cluster integration
-│   ├── jobs/                      # Job scripts for SLURM
-│   │   ├── run_cpu_job.sh
-│   │   ├── run_gpu_job.sh
-│   │   └── run_ollama_job.sh     # Starts Ollama container and runs Ollama-related jobs
-│   ├── monitor/                   # Monitoring & logs
-│   │   ├── slurm_parser.py        # Reads job logs and extracts metrics
-│   │   ├── prometheus_exporter.py # Optional metrics exporter for Prometheus
-│   │   └── logs/                  # Job logs, error logs
-│   ├── results/                   # Benchmark results (CSV, JSON)
-│   │   ├── cpu_bench_results.csv
-│   │   ├── gpu_bench_results.csv
-│   │   └── ollama_bench_results.json
-│   └── README.md
-│
-├── web/                           # Web interface / user layer
-│   ├── ui/                        # Frontend (e.g., Streamlit or React)
-│   │   ├── app.py                 # Streamlit or Dash app entrypoint
-│   │   ├── components/            # Buttons, plots, tables
-│   │   └── static/                # Icons, CSS/JS files
-│   ├── api/                       # Backend (Flask or FastAPI)
-│   │   ├── main.py                # API entrypoint (submit_job, get_results)
-│   │   ├── slurm_interface.py     # Submits Slurm jobs via `sbatch`
-│   │   ├── results_handler.py     # Loads results from cluster/results/
-│   │   └── config.yaml            # API config (paths, cluster user, etc.)
-│   ├── notebooks/                 # Alternative: Jupyter notebooks for interaction
-│   │   ├── Benchmark_Dashboard.ipynb
-│   │   └── Ollama_Experiments.ipynb
-│   └── README.md
-│
-├── docs/                          # Documentation & architecture
-│   ├── architecture-diagram.png   # Can be auto-generated
-│   ├── workflow.md                # End-to-end pipeline description
-│   └── setup_instructions.md      # Setup guide for local & HPC environment
-│
-├── scripts/                       # Helper scripts (builds, uploads, etc.)
-│   ├── build_ai_benchmark.sh      # Builds ai-benchmark.sif
-│   ├── build_ollama.sh            # Builds ollama.sif
-│   ├── upload_to_meluxina.sh      # Rsync upload script
-│   └── run_local_test.sh          # Runs containers locally for testing
-│
-├── .gitignore                     # Ignores large files (e.g., .sif, logs)
-├── LICENSE
-└── README.md                      # Main project description
-
-
-
-# Global plan of the challenge
-
-The challenge will span 4 months, with students organised into teams. It follows these steps:
-
-## Phase 1 :
-
-### Onboarding
-
-- Introduction to MeluXina and best practices for research and commercial HPC use.
-- Familiarisation with Slurm, storage systems, and monitoring tools.
-- Exploration & Adoption: In-depth exploration of the assigned topic.
-- Define objectives, identify tools and methodologies, and clarify performance metrics.
-
-### What to do:
-
-- Create your own project github (public) and configure it with milestones
-- Comment on the issue 1 (https://github.com/LuxProvide/EUMASTER4HPC2526/issues/1 ) to mention your github URL
-- Do the onboaring and the examples on meluxina
-- Load the example's result/log files on your github
-- Schedule meetings (within the group and brainstorm the project)
-- Define clear design, identify the tech stacks, create issues on your gitLab
-
-### What I need to look to at the end of the phase:
-
-- Your github
-- The logs of the example (per user)
-- The design (README file)
-- The issues & tasks
-
-
-## Phase 2 :
-
--Prototyping: Development of applications, monitoring dashboards, or benchmarking scripts.
--Iterative testing and validation.
-
-## Phase 3:
-
-- Evaluation & Testing: Deployment on MeluXina at realistic scales.
-- Performance measurements, resource usage profiling, and scalability testing.
-- Report Building: Documentation of methodologies, results, and recommended best practices.
-- Creation of comprehensive final reports.
-
-## Phase 4:
-
--Defense: Each team will present their results and defend their findings in a final session.
-Q&A and feedback for improvement.
-
-# Challenge topics: Developing a global benchmarking framework for AI Factory workloads
-
-## Objectives
-
-Design and implement a unified benchmarking framework to evaluate end-to-end performance for critical AI Factory components.
-Include benchmarks for:
-
-- File storage, relational databases (e.g., PostgreSQL), and object storage (e.g., S3)
-- Inference servers (vLLM, Triton, etc.)
-- Vector databases (Chroma, Faiss, Milvus, Weaviate)
-- Enable reproducible, modular benchmarking scenarios using Slurm orchestration.
-- Provide comparative insights, performance guidelines, and scalability assessments.
-
-## Timeline
-
-- Month 1: Analyse MeluXina’s architecture; survey APIs and services for storage, inference, and retrieval; design benchmark framework architecture.
-- Month 2: Develop modular benchmark components:
-    - Generic services deployment : Storage, Inference, Vector DB
-    - Load generators based on Dask/Spark/Slurm for inference and retrieval tasks
-    - Common data schema and metrics collection interface
-- Month 3: Execute benchmarks using Slurm; collect throughput, latency, resource usage, and scaling metrics across all components.
-- Month 4: Integrate results; generate dashboards and comparisons; finalise documentation and present findings.
-
-## Tools & stacks :
-
-- Modular framework using Python, and Slurm
-- Python DB drivers (e.g., psycopg2), S3 SDK for storage benchmarks
-- GPU-accelerated inference servers in containerised environments
-- Dockerised vector DB deployments for scalable search testing
-- Prometheus & Grafana for unified monitoring
-- Slurm for orchestrated, synchronised benchmark execution
-- Supervision & Mentoring
-
-## Supervision by Dr. Farouk Mansouri:
-
-- Dr. Mansouri Farouk will oversee the challenge, providing strategic and technical supervision with a load of 4 hours per month.
-Responsibilities:
-- Overall coordination and alignment with AI Factory vision.
-Weekly progress reviews.
-- Technical deep-dives on HPC practices and system optimisation.
-
-
-## Mentoring:
-
-- Dedicated mentoring sessions will take place one per week for:
-- Technical support and best practices.
--Guidance on tool selection, deployment, and optimisation.
--Assistance with debugging, benchmarking analysis, and report writing.
-Preparation for the final defense.
+*Built for the EU Master in HPC Challenge 2025-2026*
