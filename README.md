@@ -27,7 +27,8 @@ The orchestrator follows a modular design with five main components:
 
 ```bash
 # Clone the repository
-cd orchestrator
+git clone https://github.com/ChrisKarg/team10_EUMASTER4HPC2526_challenge.git
+cd team10_EUMASTER4HPC2526_challenge
 
 # Install dependencies
 pip install -r requirements.txt
@@ -107,7 +108,7 @@ interface.generate_report(session_id, 'results/report.yaml')
 ## 📁 Project Structure
 
 ```
-orchestrator/
+team10_EUMASTER4HPC2526_challenge/
 ├── main.py                 # CLI entry point
 ├── config.yaml            # Configuration file
 ├── requirements.txt        # Python dependencies
@@ -120,18 +121,14 @@ orchestrator/
 │   └── base.py             # Base classes and enums
 ├── recipes/                # YAML recipe definitions
 │   ├── services/           # Service templates
-│   │   ├── ollama.yaml     # Ollama LLM service
-│   │   ├── postgresql.yaml # PostgreSQL database
-│   │   └── chroma.yaml     # Vector database
-│   ├── clients/            # Client templates
-│   │   ├── ollama_benchmark.yaml
-│   │   ├── postgresql_benchmark.yaml
-│   │   └── vector_benchmark.yaml
-│   ├── ollama_complete.yaml      # Complete recipes
-│   └── postgresql_complete.yaml
+│   │   └── ollama.yaml     # Ollama LLM service
+│   └── clients/            # Client templates
+│       └── ollama_benchmark.yaml
 ├── benchmark_scripts/      # Benchmark implementation scripts
 │   └── ollama_benchmark.py # Ollama benchmark client
-└── scripts/               # Generated SLURM scripts (auto-created)
+├── tests/                  # Test suite
+├── docs/                   # Documentation
+└── examples/              # Usage examples
 ```
 
 ## 🔧 Configuration
