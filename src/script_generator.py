@@ -146,6 +146,9 @@ class ScriptGenerator:
         if target_service_host:
             script_lines.append(f"export TARGET_SERVICE_HOST={target_service_host}")
             script_lines.append("")
+            self.logger.info(f"Added TARGET_SERVICE_HOST environment variable: {target_service_host}")
+        else:
+            self.logger.warning("No target_service_host provided - TARGET_SERVICE_HOST will not be set")
         
         # Add client container build commands (if auto_build is enabled)
         client_container_build_commands = self._generate_client_container_build_commands(client_config)
@@ -302,8 +305,12 @@ class ScriptGenerator:
         if client_config.workload_type == "ollama_benchmark":
             python_cmd = "python /app/ollama_benchmark.py"
             endpoint = self._resolve_service_endpoint(client_config, target_service_host, default_port=11434)
+            self.logger.info(f"Resolved endpoint for ollama_benchmark: {endpoint}")
             if endpoint:
                 python_cmd += f" --endpoint={endpoint}"
+                self.logger.info(f"Python command with endpoint: {python_cmd}")
+            else:
+                self.logger.warning("No endpoint resolved for ollama_benchmark - missing --endpoint argument!")
             
             # Add other parameters
             for key, value in client_config.parameters.items():
@@ -312,6 +319,7 @@ class ScriptGenerator:
                 cli_key = key.replace('_', '-')
                 python_cmd += f" --{cli_key}={value}"
             
+            self.logger.info(f"Final ollama_benchmark command: {python_cmd}")
             # Run inside container with dependency installation first
             cmd_parts.extend(["bash", "-c", f'"pip install requests && {python_cmd}"'])
             
@@ -352,6 +360,10 @@ class ScriptGenerator:
     def _resolve_service_endpoint(self, client_config: ClientConfig, target_service_host: str = None, 
                                 default_port: int = 8080, protocol: str = "http") -> str:
         """Resolve service endpoint from configuration and discovered host"""
+        self.logger.info(f"Resolving endpoint - target_service_host: {target_service_host}, default_port: {default_port}, protocol: {protocol}")
+        self.logger.info(f"Client config target_service: {client_config.target_service}")
+        self.logger.info(f"Client config parameters: {client_config.parameters}")
+        
         # Check if endpoint is explicitly set in parameters
         endpoint_from_params = client_config.parameters.get('endpoint')
         
@@ -364,6 +376,7 @@ class ScriptGenerator:
             port = default_port
             if client_config.target_service and isinstance(client_config.target_service, dict):
                 port = client_config.target_service.get('port', default_port)
+                self.logger.info(f"Got port from target_service config: {port}")
             
             if protocol:
                 endpoint = f"{protocol}://{target_service_host}:{port}"
@@ -377,6 +390,7 @@ class ScriptGenerator:
         else:
             # No endpoint available
             self.logger.warning("No endpoint specified, make sure target_service configuration is correct")
+            self.logger.warning(f"target_service_host was: {target_service_host}")
             return None
     
     def _generate_client_container_build_commands(self, client_config: ClientConfig) -> List[str]:

@@ -97,13 +97,125 @@ interface = BenchmarkOrchestrator('config.yaml')
 recipe = interface.load_recipe('recipes/ollama_complete.yaml')
 session_id = interface.start_benchmark_session(recipe)
 
-# Monitor status
 status = interface.show_servers_status()
 print(f"Running services: {status}")
 
 # Generate report
 interface.generate_report(session_id, 'results/report.yaml')
 ```
+
+## 🎯 Complete Working Example
+
+Here's a step-by-step example to run an Ollama benchmark with separate service and client recipes:
+
+### Step 1: Start the Ollama Service
+
+```bash
+# Start the Ollama LLM service
+python main.py --recipe recipes/services/ollama.yaml
+```
+
+**Expected output:**
+```
+Service started: abc12345
+Monitor the job status through SLURM or check logs.
+```
+
+### Step 2: Check Service Status and Get Node IP
+
+```bash
+# Check the service status to get the node where it's running
+python main.py --status
+```
+
+**Expected output:**
+```
+SLURM Job Status:
+  Total Jobs: 1
+  Services: 1
+  Clients: 0
+  Other: 0
+
+Services:
+    98765 |    ollama_abc12 |    RUNNING |  0:05:23 | node-01
+```
+
+Note the node name (`node-01` in this example) where your service is running.
+
+### Step 3: Run the Benchmark Client
+
+```bash
+# Run the benchmark client against the service
+python main.py --recipe recipes/clients/ollama_benchmark.yaml --target-endpoint http://node-01:11434
+```
+
+**Expected output:**
+```
+Client started: def67890
+Monitor the job status through SLURM or check logs.
+```
+
+### Step 4: Monitor Progress
+
+```bash
+# Check both service and client status
+python main.py --status
+```
+
+**Expected output:**
+```
+SLURM Job Status:
+  Total Jobs: 2
+  Services: 1
+  Clients: 1
+  Other: 0
+
+Services:
+    98765 |    ollama_abc12 |    RUNNING |  0:08:15 | node-01
+
+Clients:
+    98766 | ollama_bench_def |    RUNNING |  0:02:30 | node-02
+```
+
+### Step 5: View Results
+
+Once the client job completes, check the results:
+
+```bash
+# The benchmark results will be saved in the job's working directory
+# Check SLURM output files or the specified output location
+```
+
+### Alternative: Using Service ID
+
+If you prefer to use the service ID instead of manually specifying the endpoint:
+
+```bash
+# Step 1: Start service (same as above)
+python main.py --recipe recipes/services/ollama.yaml
+
+# Step 2: List running services to get the service ID
+python main.py --list-running-services
+
+# Step 3: Use the service ID to automatically resolve the endpoint
+python main.py --recipe recipes/clients/ollama_benchmark.yaml --target-service abc12345
+```
+
+This approach automatically resolves the node IP and builds the endpoint for you.
+
+### Debugging
+
+For detailed debugging information, add `--verbose` to any command:
+
+```bash
+python main.py --verbose --recipe recipes/clients/ollama_benchmark.yaml --target-endpoint http://node-01:11434
+```
+
+This will show:
+- Service host resolution details
+- Generated SLURM script content
+- Container command with endpoint arguments
+- Detailed logging throughout the process
 
 ## 📁 Project Structure
 
@@ -285,7 +397,7 @@ system = interface.get_system_status()
 
 ### Results Collection
 
-Results are automatically collected in JSON format:
+Results are automatically collected in JSON format in the results directory of the login node:
 
 ```json
 {

@@ -90,6 +90,14 @@ class BenchmarkOrchestrator:
             if 'service' not in recipe and 'client' not in recipe:
                 raise ValueError("Recipe must contain at least 'service' or 'client' section")
             
+            # Log what type of recipe this is
+            if 'service' in recipe and 'client' in recipe:
+                self.logger.info("Loaded combined service+client recipe")
+            elif 'service' in recipe:
+                self.logger.info("Loaded service-only recipe")
+            elif 'client' in recipe:
+                self.logger.info("Loaded client-only recipe")
+            
             self.logger.info(f"Loaded recipe from {file_path}")
             return recipe
             

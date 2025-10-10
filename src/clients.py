@@ -70,10 +70,14 @@ class ClientsModule(BaseModule):
         
         client_id = self.generate_id()
         self.logger.info(f"Starting client {client_id} with recipe: {recipe}")
+        self.logger.info(f"Target service ID: {target_service_id}")
+        self.logger.info(f"Target service host: {target_service_host}")
         
         try:
             # Parse recipe to create client config
             client_config = self._parse_client_recipe(recipe)
+            self.logger.info(f"Client config workload type: {client_config.workload_type}")
+            self.logger.info(f"Client config target_service: {client_config.target_service}")
             
             # Generate SLURM script
             script_content = self.script_generator.generate_client_script(
@@ -114,6 +118,9 @@ class ClientsModule(BaseModule):
                         self.logger.error(f"Benchmark script not found in any of these locations: {possible_paths}")
                         self.logger.error(f"Current working directory: {os.getcwd()}")
                 
+                # DEBUG: Log the generated script content
+                self.logger.debug(f"Generated SLURM script for client {client_id}:\n{script_content}")
+
                 job_id = self.ssh_client.submit_slurm_job(
                     script_content, f"client_{client_id}.sh"
                 )

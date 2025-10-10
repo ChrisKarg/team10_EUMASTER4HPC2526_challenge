@@ -123,6 +123,9 @@ class ServersModule(BaseModule):
             script_content = self.script_generator.generate_service_script(
                 service_config, service_id
             )
+
+            # DEBUG: Log the generated script content
+            self.logger.debug(f"Generated SLURM script for service {service_id}:\n{script_content}")
             
             # Submit job via SSH
             if self.ssh_client:

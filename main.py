@@ -41,6 +41,10 @@ def main():
                        help='Configuration file path')
     parser.add_argument('--recipe', '-r', type=str,
                        help='Recipe file to execute')
+    parser.add_argument('--target-service', '-t', type=str,
+                       help='Target service ID for client recipes (use with --recipe)')
+    parser.add_argument('--target-endpoint', '-e', type=str,
+                       help='Direct endpoint for client recipes (e.g., http://node-01:11434)')
     parser.add_argument('--list-services', action='store_true',
                        help='List available services')
     parser.add_argument('--list-clients', action='store_true',
@@ -61,6 +65,8 @@ def main():
                        help='Show detailed debug information about all services')
     parser.add_argument('--list-all-services', action='store_true',
                        help='List all services (tracked and SLURM-only)')
+    parser.add_argument('--list-running-services', action='store_true',
+                       help='List only running services with their IDs')
     parser.add_argument('--verbose', '-v', action='store_true',
                        help='Enable verbose logging')
     parser.add_argument('--setup', action='store_true',
@@ -262,6 +268,26 @@ def main():
             if not all_services['all_services']:
                 print("No services found")
         
+        elif args.list_running_services:
+            print("Currently running services:")
+            all_services = interface.servers.list_all_services()
+            
+            running_services = [s for s in all_services['all_services'] 
+                              if s['status'].upper() in ['RUNNING', 'PENDING']]
+            
+            if not running_services:
+                print("  No running services found")
+                print("\nTo start a service, use:")
+                print("  python main.py --recipe recipes/services/ollama.yaml")
+            else:
+                print(f"\nFound {len(running_services)} running services:")
+                for service in running_services:
+                    type_marker = "📊" if service['type'] == 'tracked' else "🔧"
+                    print(f"  {type_marker} {service['service_id']} (Job: {service['job_id']}) - {service['status']}")
+                
+                print(f"\nTo target a service, use:")
+                print(f"  python main.py --recipe recipes/clients/ollama_benchmark.yaml --target-service <SERVICE_ID>")
+        
         elif args.recipe:
             if not os.path.exists(args.recipe):
                 logger.error(f"Recipe file not found: {args.recipe}")
@@ -270,11 +296,85 @@ def main():
             logger.info(f"Loading recipe: {args.recipe}")
             recipe = interface.load_recipe(args.recipe)
             
-            logger.info("Starting benchmark session")
-            session_id = interface.start_benchmark_session(recipe)
-            
-            print(f"Benchmark session started: {session_id}")
-            print("Monitor the job status through SLURM or check logs.")
+            # Check if this is a client-only recipe
+            if 'client' in recipe and 'service' not in recipe:
+                logger.info("Client-only recipe detected")
+                
+                # Check for target service or endpoint
+                target_service_id = args.target_service
+                target_endpoint = args.target_endpoint
+                
+                if not target_service_id and not target_endpoint:
+                    # List available services to help user choose
+                    all_services = interface.servers.list_all_services()
+                    
+                    if not all_services['all_services']:
+                        print("❌ No running services found. Please:")
+                        print("  1. Start a service first with a service recipe, or")
+                        print("  2. Use --target-endpoint to specify a direct endpoint, or") 
+                        print("  3. Use --target-service to specify a service ID")
+                        return 1
+                    
+                    print("Available running services:")
+                    for i, service in enumerate(all_services['all_services'], 1):
+                        status_info = f"{service['status']} (Job: {service['job_id']})"
+                        print(f"  {i}. {service['service_id']} - {status_info}")
+                    
+                    print("\nTo target a service, use:")
+                    print(f"  python main.py --recipe {args.recipe} --target-service <SERVICE_ID>")
+                    print("\nOr to use a direct endpoint:")
+                    print(f"  python main.py --recipe {args.recipe} --target-endpoint http://node-name:11434")
+                    return 1
+                
+                # Start client with target specification
+                logger.info("Starting client with target specification")
+                target_service_host = None
+                
+                if target_endpoint:
+                    # Extract host from endpoint for compatibility
+                    import re
+                    match = re.match(r'https?://([^:]+)', target_endpoint)
+                    if match:
+                        target_service_host = match.group(1)
+                    
+                    # Add endpoint to recipe parameters
+                    if 'client' in recipe and 'parameters' in recipe['client']:
+                        recipe['client']['parameters']['endpoint'] = target_endpoint
+                    
+                    logger.info(f"Using direct endpoint: {target_endpoint}")
+                    client_id = interface.clients.start_client(recipe, target_service_id or "manual", target_service_host)
+                    
+                elif target_service_id:
+                    # Resolve service host
+                    logger.info(f"Resolving host for service: {target_service_id}")
+                    
+                    import time
+                    for attempt in range(6):  # Try for up to 30 seconds
+                        target_service_host = interface.servers.get_service_host(target_service_id)
+                        if target_service_host:
+                            logger.info(f"✅ Resolved service {target_service_id} to host: {target_service_host}")
+                            break
+                        else:
+                            logger.info(f"🔄 Attempt {attempt + 1}/6: Service host not yet available, waiting 5s...")
+                            time.sleep(5)
+                    
+                    if not target_service_host:
+                        print(f"❌ Could not resolve host for service {target_service_id}")
+                        print("The service might not be running or not yet assigned to a node.")
+                        return 1
+                    
+                    client_id = interface.clients.start_client(recipe, target_service_id, target_service_host)
+                
+                print(f"Client started: {client_id}")
+                print("Monitor the job status through SLURM or check logs.")
+                
+            else:
+                # Original combined recipe logic
+                logger.info("Starting benchmark session")
+                session_id = interface.start_benchmark_session(recipe)
+                
+                print(f"Benchmark session started: {session_id}")
+                print("Monitor the job status through SLURM or check logs.")
         
         else:
             # Interactive mode - enhanced with service management
