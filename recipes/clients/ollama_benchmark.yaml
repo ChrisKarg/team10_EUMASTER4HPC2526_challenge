@@ -3,16 +3,17 @@ client:
   name: ollama_benchmark
   description: Benchmark client for Ollama LLM service
   container_image: benchmark_client.sif
-  workload_type: ollama_benchmark
   duration: 300  # 5 minutes
 
-  # Resource requirements (same partition as service for networking)
+  # Resource requirements (SLURM job configuration)
   resources:
-    memory: "4GB"
-    cpu: 2
-    slurm:
-      partition: gpu  # Same partition as service for better connectivity
-      time: "00:30:00"
+    partition: gpu  # Same partition as service for better connectivity
+    time: "00:30:00"
+    qos: default
+    nodes: 1
+    ntasks: 1
+    ntasks_per_node: 1
+    mem: "4GB"
 
   # Environment variables
   environment:
@@ -33,6 +34,6 @@ client:
 
   # Target service configuration (used by orchestrator for service discovery)
   target_service:
-    type: ollama
+    name: ollama
     port: 11434
     health_check_endpoint: "/api/tags"

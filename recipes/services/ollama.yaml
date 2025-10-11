@@ -6,14 +6,17 @@ service:
   command: ollama
   args: ["serve"]
 
-  # Resource requirements
+  # Resource requirements (SLURM job configuration)
+  # Here specify what options to include in SLURM script (sbatch)
   resources:
-    gpu: 1
-    memory: "16GB"
-    slurm:
-      partition: gpu
-      time: "02:00:00"
-      gres: "gpu:1"
+    time: "00:30:00"
+    qos: default
+    partition: gpu
+    nodes: 1
+    ntasks: 1
+    ntasks_per_node: 1
+    gres: "gpu:1"         # Finer control over GPU allocation
+    mem: "16GB"           # Fine control over memory allocation
 
   # Environment variables for container networking
   environment:

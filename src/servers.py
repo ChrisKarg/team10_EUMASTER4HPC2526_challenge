@@ -7,39 +7,19 @@ import yaml
 from typing import Dict, List, Optional, Any
 from pathlib import Path
 
-from base import BaseModule, ServiceConfig, JobInfo, ServiceStatus
-from script_generator import ScriptGenerator
+from base import BaseModule, JobInfo, ServiceStatus
+from services import JobFactory, Service
 
 class ServersModule(BaseModule):
     """Manages server services on HPC cluster"""
     
     def __init__(self, config: Dict[str, Any], ssh_client=None):
         super().__init__(config, ssh_client)
-        self.script_generator = ScriptGenerator(config)
         self.services_dir = Path(config.get('services_dir', 'recipes/services'))
-        self._load_service_definitions()
-    
-    def _load_service_definitions(self):
-        """Load service definitions from YAML files"""
-        self.service_definitions = {}
-        
-        if not self.services_dir.exists():
-            self.logger.warning(f"Services directory not found: {self.services_dir}")
-            return
-        
-        for yaml_file in self.services_dir.glob("*.yaml"):
-            try:
-                with open(yaml_file, 'r') as f:
-                    service_def = yaml.safe_load(f)
-                    service_name = service_def.get('name', yaml_file.stem)
-                    self.service_definitions[service_name] = service_def
-                    self.logger.debug(f"Loaded service definition: {service_name}")
-            except Exception as e:
-                self.logger.error(f"Failed to load service definition {yaml_file}: {e}")
     
     def list_available_services(self) -> List[str]:
-        """Return a list of all supported service recipes"""
-        return list(self.service_definitions.keys())
+        """Return a list of all available service types from factory"""
+        return JobFactory.list_available_services()
     
     def list_running_services(self) -> List[str]:
         """Return a list of all currently running service IDs"""
@@ -116,13 +96,11 @@ class ServersModule(BaseModule):
         self.logger.info(f"Starting service {service_id} with recipe: {recipe}")
         
         try:
-            # Parse recipe to create service config
-            service_config = self._parse_service_recipe(recipe)
+            # Create service using new factory pattern
+            service = JobFactory.create_service(recipe, self.config)
             
-            # Generate SLURM script
-            script_content = self.script_generator.generate_service_script(
-                service_config, service_id
-            )
+            # Generate SLURM script using job's own method
+            script_content = service.generate_slurm_script(service_id)
 
             # DEBUG: Log the generated script content
             self.logger.debug(f"Generated SLURM script for service {service_id}:\n{script_content}")
@@ -387,30 +365,6 @@ class ServersModule(BaseModule):
             "started_at": job_info.started_at,
             "completed_at": job_info.completed_at
         }
-    
-    def _parse_service_recipe(self, recipe: dict) -> ServiceConfig:
-        """Parse recipe dictionary into ServiceConfig"""
-        
-        service_def = recipe.get('service', {})
-        
-        # Get service template if specified
-        service_type = service_def.get('type')
-        if service_type and service_type in self.service_definitions:
-            template = self.service_definitions[service_type]
-            # Merge template with recipe overrides
-            merged_def = {**template, **service_def}
-        else:
-            merged_def = service_def
-        
-        return ServiceConfig(
-            name=merged_def.get('name', 'unknown'),
-            container_image=merged_def.get('container_image', 'unknown'),
-            resources=merged_def.get('resources', {}),
-            environment=merged_def.get('environment', {}),
-            ports=merged_def.get('ports', []),
-            command=merged_def.get('command'),
-            args=merged_def.get('args', [])
-        )
     
     def cleanup_completed_services(self):
         """Remove completed/failed services from tracking"""

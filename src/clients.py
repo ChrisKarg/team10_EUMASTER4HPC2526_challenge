@@ -8,15 +8,14 @@ import yaml
 from typing import Dict, List, Optional, Any
 from pathlib import Path
 
-from base import BaseModule, ClientConfig, JobInfo, ServiceStatus
-from script_generator import ScriptGenerator
+from base import BaseModule, JobInfo, ServiceStatus
+from services import JobFactory, Client
 
 class ClientsModule(BaseModule):
     """Manages client workloads on HPC cluster"""
     
     def __init__(self, config: Dict[str, Any], ssh_client=None):
         super().__init__(config, ssh_client)
-        self.script_generator = ScriptGenerator(config)
         self.clients_dir = Path(config.get('clients_dir', 'recipes/clients'))
         self._load_client_definitions()
     
@@ -74,20 +73,18 @@ class ClientsModule(BaseModule):
         self.logger.info(f"Target service host: {target_service_host}")
         
         try:
-            # Parse recipe to create client config
-            client_config = self._parse_client_recipe(recipe)
-            self.logger.info(f"Client config workload type: {client_config.workload_type}")
-            self.logger.info(f"Client config target_service: {client_config.target_service}")
+            # Parse recipe to create client instance
+            client = self._parse_client_recipe(recipe)
+            self.logger.info(f"Client target service: {client.get_target_service_name()}")
+            self.logger.info(f"Client target_service: {client.get_target_service()}")
             
-            # Generate SLURM script
-            script_content = self.script_generator.generate_client_script(
-                client_config, client_id, target_service_host
-            )
+            # Generate SLURM script using client's own method
+            script_content = client.generate_slurm_script(client_id, target_service_host)
             
             # Submit job via SSH
             if self.ssh_client:
-                # Upload benchmark script if this is an ollama_benchmark client
-                if client_config.workload_type == "ollama_benchmark":
+                # Upload benchmark script if this is an ollama client
+                if client.get_target_service_name() == "ollama":
                     # Try the new ensure_benchmark_script method first
                     if hasattr(self.ssh_client, 'ensure_benchmark_script'):
                         if self.ssh_client.ensure_benchmark_script("ollama_benchmark.py"):
@@ -249,8 +246,8 @@ class ClientsModule(BaseModule):
             "completed_at": job_info.completed_at
         }
     
-    def _parse_client_recipe(self, recipe: dict) -> ClientConfig:
-        """Parse recipe dictionary into ClientConfig"""
+    def _parse_client_recipe(self, recipe: dict) -> Client:
+        """Parse recipe dictionary into Client using factory"""
         
         client_def = recipe.get('client', {})
         
@@ -263,16 +260,8 @@ class ClientsModule(BaseModule):
         else:
             merged_def = client_def
         
-        return ClientConfig(
-            name=merged_def.get('name', 'unknown'),
-            container_image=merged_def.get('container_image', 'unknown'),
-            target_service=merged_def.get('target_service', {}),  # Store as dict to preserve port info
-            workload_type=merged_def.get('workload_type', 'generic'),
-            duration=merged_def.get('duration', 300),
-            resources=merged_def.get('resources', {}),
-            environment=merged_def.get('environment', {}),
-            parameters=merged_def.get('parameters', {})
-        )
+        # Use factory to create client instance
+        return JobFactory.create_client(merged_def, self.config)
     
     def cleanup_completed_clients(self):
         """Remove completed/failed clients from tracking"""

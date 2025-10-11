@@ -4,6 +4,8 @@
 
 The HPC Benchmarking Orchestrator is a sophisticated system designed to manage containerized services and benchmark workloads on High-Performance Computing (HPC) clusters using SLURM. The system provides automated deployment, monitoring, and lifecycle management of distributed benchmarking experiments.
 
+The architecture is built around a **Job-based inheritance hierarchy** with a **factory pattern** for creating service and client instances, providing a clean separation of concerns and extensible design.
+
 <span style="background-color: #fff9b1; font-size: 1.35em; font-weight: bold;">
 TODO: Monitor and Logs are not taken into account for now, and CLI interface is though as a minimal interface to run tests
 </span>
@@ -19,12 +21,14 @@ graph TB
     BO --> CM[ClientsModule]
     BO --> SSH[SSHClient]
     
-    SM --> SG[ScriptGenerator]
-    CM --> SG
+    SM --> YAML1[Service Recipes]
+    SM --> JF[JobFactory]
+    CM --> JF
+    CM --> YAML2[Client Recipes]
     SSH --> HPC[HPC Cluster/SLURM]
     
-    SM --> YAML1[Service Recipes]
-    CM --> YAML2[Client Recipes]
+    JF --> SRV[Service Instances]
+    JF --> CLT[Client Instances]
     
     HPC --> CONT[Container Runtime]
     HPC --> JOBS[SLURM Jobs]
@@ -33,13 +37,88 @@ graph TB
 ### Core Components
 
 1. **BenchmarkOrchestrator**: Central orchestration engine
-2. **ServersModule**: Manages service deployments
-3. **ClientsModule**: Manages benchmark client workloads
-4. **SSHClient**: Handles remote HPC communication
-5. **ScriptGenerator**: Generates SLURM batch scripts
-6. **BaseModule**: Abstract base class for modules
+2. **ServersModule**: Manages service deployments using JobFactory
+3. **ClientsModule**: Manages benchmark client workloads using JobFactory
+4. **JobFactory**: Creates Service/Client instances based on recipe type
+5. **SSHClient**: Handles remote HPC communication
+6. **Job Instances**: Each job generates its own SLURM batch scripts
+7. **BaseModule**: Abstract base class for orchestrator modules
 
 ## Class Diagram
+
+### Job Hierarchy and Factory Pattern
+
+```mermaid
+classDiagram
+    %% Abstract Base Classes
+    class Job {
+        <<abstract>>
+        +name: str
+        +container_image: str
+        +resources: dict
+        +environment: dict
+        +from_recipe(recipe_dict) Job*
+        +generate_script_commands(config) list*
+        +get_container_command(config) str*
+        +generate_slurm_script(config, job_id, target_host) str
+        +_generate_container_build_commands(config) list
+        +_get_docker_source(config) str
+    }
+    
+    class Service {
+        <<abstract>>
+        +ports: list
+        +get_health_check_commands() list*
+        +get_service_setup_commands() list*
+    }
+    
+    class Client {
+        <<abstract>>
+        +target_service: dict
+        +workload_type: str
+        +duration: int
+        +parameters: dict
+        +get_client_setup_commands() list*
+        +resolve_service_endpoint(target_host, port, protocol) str*
+        +_get_docker_source(config) str
+    }
+    
+    %% Concrete Implementations
+    class OllamaService {
+        +from_recipe(recipe_dict) OllamaService
+        +generate_script_commands(config) list
+        +get_container_command(config) str
+        +get_health_check_commands() list
+        +get_service_setup_commands() list
+    }
+    
+    class OllamaClient {
+        +from_recipe(recipe_dict) OllamaClient
+        +generate_script_commands(config) list
+        +get_container_command(config) str
+        +get_client_setup_commands() list
+        +resolve_service_endpoint(target_host, port, protocol) str
+    }
+    
+    %% Factory Pattern
+    class JobFactory {
+        <<factory>>
+        +register_service(service_type, service_class)
+        +register_client(client_type, client_class)
+        +create_service(recipe_dict) Service
+        +create_client(recipe_dict) Client
+        +list_available_services() list
+        +list_available_clients() list
+    }
+    
+    %% Relationships
+    Job <|-- Service
+    Job <|-- Client
+    Service <|-- OllamaService
+    Client <|-- OllamaClient
+    JobFactory ..> Service : creates
+    JobFactory ..> Client : creates
+```
 
 ### Core System Classes
 
@@ -81,7 +160,6 @@ classDiagram
     %% Service Management
     class ServersModule {
         <<Module>>
-        -script_generator: ScriptGenerator
         -services_dir: Path
         -service_definitions: Dict
         +_load_service_definitions()
@@ -97,7 +175,6 @@ classDiagram
     %% Client Management
     class ClientsModule {
         <<Module>>
-        -script_generator: ScriptGenerator
         -clients_dir: Path
         -client_definitions: Dict
         +_load_client_definitions()
@@ -126,40 +203,6 @@ classDiagram
         +submit_slurm_job(script_content: str) str
         +cancel_slurm_job(job_id: str) bool
         +get_job_status(job_id: str) dict
-    }
-    
-    class ScriptGenerator {
-        <<Utility>>
-        -config: Dict
-        -default_slurm_config: Dict
-        +generate_service_script(service_config: ServiceConfig, service_id: str) str
-        +generate_client_script(client_config: ClientConfig, client_id: str) str
-        +_build_container_commands(image: str) List[str]
-        +_get_singularity_run_command(config: ServiceConfig|ClientConfig) str
-    }
-    
-    %% Configuration Data Classes
-    class ServiceConfig {
-        <<DataClass>>
-        +name: str
-        +container_image: str
-        +resources: Dict
-        +environment: Dict
-        +ports: List[int]
-        +command: str
-        +args: List[str]
-    }
-    
-    class ClientConfig {
-        <<DataClass>>
-        +name: str
-        +container_image: str
-        +target_service: Dict
-        +workload_type: str
-        +duration: int
-        +resources: Dict
-        +environment: Dict
-        +parameters: Dict
     }
     
     %% Runtime Data Classes
@@ -194,10 +237,6 @@ classDiagram
     BenchmarkOrchestrator *-- SSHClient : contains
     
     %% Dependency Relationships
-    ServersModule ..> ScriptGenerator : uses
-    ClientsModule ..> ScriptGenerator : uses
-    ServersModule ..> ServiceConfig : creates
-    ClientsModule ..> ClientConfig : creates
     BaseModule ..> JobInfo : manages
     JobInfo ..> ServiceStatus : has status
 ```
@@ -211,23 +250,33 @@ graph TD
     SM[🖥️ ServersModule<br/>Service Management]
     CM[📊 ClientsModule<br/>Benchmark Client Management]
     SSH[🔐 SSHClient<br/>HPC Communication]
-    SG[📝 ScriptGenerator<br/>SLURM Script Generation]
+    JF[🏭 JobFactory<br/>Service/Client Factory]
+    
+    %% Job Hierarchy
+    JOB[📋 Job<br/>Abstract Base Class]
+    SRV[🚀 Service<br/>Service Jobs]
+    CLT[🎯 Client<br/>Client Jobs]
+    OSRV[🤖 OllamaService<br/>Concrete Service]
+    OCLT[🧪 OllamaClient<br/>Concrete Client]
     
     %% Data Components
-    SC[⚙️ ServiceConfig<br/>Service Configuration]
-    CC[⚙️ ClientConfig<br/>Client Configuration]
     JI[📋 JobInfo<br/>Job Tracking]
     
     %% Relationships
     BO --> SM
     BO --> CM
     BO --> SSH
-    SM --> SG
-    CM --> SG
-    SM --> SC
-    CM --> CC
+    SM --> JF
+    CM --> JF
     SM --> JI
     CM --> JI
+    
+    JOB --> SRV
+    JOB --> CLT
+    SRV --> OSRV
+    CLT --> OCLT
+    JF ..> SRV
+    JF ..> CLT
     
     %% External Systems
     SSH --> HPC[🏢 HPC Cluster<br/>SLURM Workload Manager]
@@ -236,19 +285,22 @@ graph TD
     classDef orchestrator fill:#e1f5fe,stroke:#01579b,stroke-width:3px
     classDef module fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
     classDef infrastructure fill:#e8f5e8,stroke:#1b5e20,stroke-width:2px
-    classDef config fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    classDef factory fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    classDef job fill:#fce4ec,stroke:#880e4f,stroke-width:2px
     classDef external fill:#ffebee,stroke:#c62828,stroke-width:2px
     
     class BO orchestrator
     class SM,CM module
-    class SSH,SG infrastructure
-    class SC,CC,JI config
+    class SSH infrastructure
+    class JF factory
+    class JOB,SRV,CLT,OSRV,OCLT job
+    class JI config
     class HPC external
 ```
 
 ## Sequence Diagrams
 
-### 1. Benchmark Session Lifecycle
+### 1. Benchmark Session Lifecycle (New Job-Based Architecture)
 
 ```mermaid
 sequenceDiagram
@@ -256,7 +308,8 @@ sequenceDiagram
     participant CLI
     participant BO as BenchmarkOrchestrator
     participant SM as ServersModule
-    participant CM as ClientsModule
+    participant JF as JobFactory
+    participant SRV as Service
     participant SSH as SSHClient
     participant HPC as HPC Cluster
     
@@ -270,8 +323,14 @@ sequenceDiagram
     Note over BO,HPC: Service Deployment Phase
     BO->>SM: start_service(service_recipe)
     SM->>SM: Generate unique service_id
-    SM->>ScriptGenerator: generate_service_script(config, id)
-    ScriptGenerator-->>SM: SLURM script content
+    SM->>JF: create_service(recipe_dict)
+    JF->>SRV: new OllamaService(recipe_dict)
+    SRV-->>JF: service instance
+    JF-->>SM: service instance
+    SM->>SRV: generate_slurm_script(config, id)
+    SRV->>SRV: generate_script_commands(config)
+    SRV->>SRV: _generate_container_build_commands(config)
+    SRV-->>SM: complete SLURM script
     SM->>SSH: submit_slurm_job(script)
     SSH->>HPC: sbatch script.sh
     HPC-->>SSH: job_id
@@ -290,8 +349,14 @@ sequenceDiagram
     Note over BO,HPC: Client Deployment Phase
     BO->>CM: start_client(client_recipe, service_id)
     CM->>CM: Generate unique client_id
-    CM->>ScriptGenerator: generate_client_script(config, id)
-    ScriptGenerator-->>CM: SLURM script content
+    CM->>JF: create_client(recipe_dict)
+    JF->>CLT: new OllamaClient(recipe_dict)
+    CLT-->>JF: client instance
+    JF-->>CM: client instance
+    CM->>CLT: generate_slurm_script(config, id, target_host)
+    CLT->>CLT: generate_script_commands(config)
+    CLT->>CLT: _generate_container_build_commands(config)
+    CLT-->>CM: complete SLURM script
     CM->>SSH: submit_slurm_job(script)
     SSH->>HPC: sbatch script.sh
     HPC-->>SSH: job_id
@@ -309,7 +374,6 @@ sequenceDiagram
 sequenceDiagram
     participant BO as BenchmarkOrchestrator
     participant SM as ServersModule
-    participant SG as ScriptGenerator
     participant SSH as SSHClient
     participant HPC as HPC Cluster
     
@@ -317,14 +381,11 @@ sequenceDiagram
     SM->>SM: _parse_service_recipe(recipe)
     SM->>SM: generate_id()
     
-    Note over SM,SG: Script Generation
-    SM->>SG: generate_service_script(config, service_id)
-    SG->>SG: Extract resource requirements
-    SG->>SG: Build SLURM directives
-    SG->>SG: Generate container commands
-    SG->>SG: Add environment variables
-    SG->>SG: Add networking setup
-    SG-->>SM: Complete SLURM script
+    Note over SM,SRV: Script Generation
+    SM->>SRV: generate_slurm_script(config, service_id)
+    SRV->>SRV: generate_script_commands(config)
+    SRV->>SRV: _generate_container_build_commands(config)
+    SRV-->>SM: Complete SLURM script
     
     Note over SM,HPC: Job Submission
     SM->>SSH: submit_slurm_job(script_content)
@@ -419,17 +480,134 @@ This whole part is to be revised when we'll actually start writing code
 - `BaseModule` serves as an abstract base for `ServersModule` and `ClientsModule`
 - Provides common interface for service management across different module types
 
-### 2. **Strategy Pattern**
-- `ScriptGenerator` implements different script generation strategies
-- Configurable SLURM parameters based on resource requirements
+### 2. **Job Factory Pattern (New Architecture)**
+- `JobFactory` creates Service and Client instances based on recipe types
+- Centralized registration system for new service/client types
+- Clean separation between creation logic and business logic
 
-### 3. **Observer Pattern**
+### 3. **Inheritance Hierarchy Pattern (New Architecture)**
+- Abstract `Job` base class defines common interface
+- `Service` and `Client` abstract classes provide specialized behavior  
+- Concrete implementations (`OllamaService`, `OllamaClient`) handle specific workflows
+- Polymorphic behavior through abstract methods
+
+### 4. **Strategy Pattern**
+- Each concrete Job class implements its own script generation strategy
+- Job instances handle their own SLURM script generation
+- Configurable SLURM parameters based on job type and requirements
+
+### 5. **Template Method Pattern (New Architecture)**
+- `generate_slurm_script` in Job base class provides template for script generation
+- Concrete Job classes fill in job-specific details via `generate_script_commands`
+- Consistent script structure across different job types
+
+### 6. **Observer Pattern**
 - Status monitoring through periodic SLURM queries
 - Event-driven updates to service and client states
 
-### 4. **Command Pattern**
+### 7. **Command Pattern**
 - SSH operations encapsulated as commands
 - SLURM job operations abstracted through SSH interface
+
+## Extensibility and Adding New Services
+
+### Adding a New Service Type
+
+1. **Create Service Class**:
+```python
+class MyNewService(Service):
+    def generate_slurm_directives(self, slurm_config: dict) -> List[str]:
+        # Return service-specific SLURM directives
+        directives = [
+            "#!/bin/bash -l",
+            f"#SBATCH --job-name={self.get_name()}",
+            # Add service-specific SLURM directives
+        ]
+        return directives
+    
+    def generate_container_commands(self, script_generator) -> List[str]:
+        # Return service-specific container commands
+        commands = [
+            "# Service-specific setup",
+            f"apptainer exec {self.get_container_image()} {self.get_command()}",
+            # Add service-specific logic
+        ]
+        return commands
+```
+
+2. **Register with Factory**:
+```python
+from services import JobFactory
+JobFactory.register_service("my_new_service", MyNewService)
+```
+
+3. **Create Service Recipe**:
+```yaml
+service:
+  type: my_new_service
+  name: "My New Service"
+  container_image: "my_new_service.sif"
+  command: "my_service_command"
+  resources:
+    time: "01:00:00"
+    partition: "gpu"
+    nodes: 1
+```
+
+### Adding a New Client Type
+
+1. **Create Client Class**:
+```python
+class MyNewClient(Client):
+    def generate_slurm_directives(self, slurm_config: dict) -> List[str]:
+        # Return client-specific SLURM directives
+        directives = [
+            "#!/bin/bash -l", 
+            f"#SBATCH --job-name={self.get_name()}_benchmark",
+            # Add client-specific SLURM directives
+        ]
+        return directives
+    
+    def generate_container_commands(self, script_generator) -> List[str]:
+        # Return client-specific container commands
+        commands = [
+            "# Client-specific setup",
+            "# Benchmark execution logic",
+            f"apptainer exec {self.get_container_image()} python /app/my_benchmark.py",
+            # Add result collection
+        ]
+        return commands
+```
+
+2. **Register with Factory**:
+```python
+from services import JobFactory
+JobFactory.register_client("my_new_client", MyNewClient)
+```
+
+3. **Create Client Recipe**:
+```yaml
+client:
+  type: my_new_client
+  name: "My New Benchmark Client"
+  workload_type: "my_new_benchmark"
+  container_image: "benchmark_client.sif"
+  target_service:
+    type: "my_new_service"
+    port: 8080
+  parameters:
+    benchmark_duration: 300
+    test_mode: "stress"
+```
+
+### Benefits of the New Architecture
+
+1. **Extensibility**: Easy to add new service and client types without modifying existing code
+2. **Maintainability**: Clean separation of concerns with single responsibility principle
+3. **Testability**: Each job type can be tested independently with mock dependencies
+4. **Reusability**: Common functionality shared through inheritance hierarchy
+5. **Flexibility**: Job-specific behavior can be customized without affecting other job types
+6. **Type Safety**: Strong typing through abstract base classes ensures interface compliance
 
 ## Data Flow Architecture
 

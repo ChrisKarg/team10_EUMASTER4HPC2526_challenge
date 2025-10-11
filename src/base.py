@@ -29,29 +29,6 @@ class JobInfo:
     nodes: Optional[List[str]] = None
     logs_path: Optional[str] = None
 
-@dataclass
-class ServiceConfig:
-    """Configuration for a service"""
-    name: str
-    container_image: str
-    resources: Dict[str, Any]
-    environment: Dict[str, str]
-    ports: List[int]
-    command: Optional[str] = None
-    args: Optional[List[str]] = None
-
-@dataclass
-class ClientConfig:
-    """Configuration for a client"""
-    name: str
-    container_image: str
-    target_service: Dict[str, Any]  # Changed to dict to store service config (type, port, etc.)
-    workload_type: str
-    duration: int
-    resources: Dict[str, Any]
-    environment: Dict[str, str]
-    parameters: Dict[str, Any]
-
 class BaseModule(abc.ABC):
     """Base class for all orchestrator modules"""
     

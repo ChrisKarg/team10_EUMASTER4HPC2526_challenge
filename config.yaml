@@ -28,8 +28,6 @@ logs_dir: "logs"
 # Container settings
 containers:
   base_path: "/mnt/tier2/users/u103235"  # Path on HPC cluster where containers are stored
-  auto_build: true  # Automatically build containers if they don't exist
-  build_timeout: "30:00"  # Time limit for container builds (30 minutes)
   force_rebuild: false  # Force rebuild even if container exists
   docker_sources:  # Docker sources for automatic building
     ollama: "docker://ollama/ollama:latest"
