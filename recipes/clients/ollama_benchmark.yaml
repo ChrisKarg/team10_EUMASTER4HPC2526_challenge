@@ -37,3 +37,9 @@ client:
     name: ollama
     port: 11434
     health_check_endpoint: "/api/tags"
+
+  # Script configuration
+  script:
+    name: "ollama_benchmark.py"           # Name of the script to run
+    local_path: "benchmark_scripts/"     # Where to find script locally
+    remote_path: "$HOME/benchmark_scripts/" # Where to upload script remotely

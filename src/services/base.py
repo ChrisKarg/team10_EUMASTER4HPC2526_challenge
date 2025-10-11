@@ -221,31 +221,13 @@ class Job(abc.ABC):
         which contains system-wide settings including SLURM configuration,
         container settings, and job-type specific configuration sections.
         
+        Note: Default implementations are provided in Service and Client classes.
+        Override only if you need custom behavior.
+        
         Returns:
             List[str]: List of bash commands to be included in the SLURM script.
                 Commands should be valid bash syntax and include any necessary
                 setup, execution, and cleanup operations.
-        
-        Example Return Values:
-            Service implementation:
-                [
-                    "echo 'Starting service setup'",
-                    "mkdir -p /tmp/service_data", 
-                    f"apptainer exec {container_path} start_service.sh",
-                    "echo 'Service started successfully'"
-                ]
-            
-            Client implementation:
-                [
-                    "echo 'Connecting to service at $TARGET_SERVICE_HOST'",
-                    f"apptainer exec {container_path} run_benchmark.py",
-                    "echo 'Benchmark completed'"
-                ]
-        
-        Error Handling:
-            - Should include validation of required configuration
-            - May raise exceptions for invalid or missing configuration
-            - Consider including retry logic for transient failures
         """
         pass
     
@@ -256,24 +238,12 @@ class Job(abc.ABC):
         to execute the container in the SLURM environment. It handles container
         runtime selection, bind mounts, environment passing, and command specification.
         
-        The method can access the global configuration through self.config, which may include:
-        - containers.base_path: Base directory for container images
-        - containers.bind_mounts: Default bind mount configurations
-        - containers.runtime_options: Additional runtime parameters
+        Note: Default implementations are provided in Service and Client classes.
+        Override only if you need custom behavior.
         
         Returns:
             str: Complete container execution command ready for bash execution.
                 Typically uses Apptainer/Singularity syntax but may vary by implementation.
-        
-        Example Return Values:
-            Basic execution:
-                "apptainer exec /containers/ollama.sif /usr/local/bin/ollama serve"
-            
-            With bind mounts and environment:
-                "apptainer exec --bind /data:/data --env MODEL=llama2 /containers/ollama.sif ollama serve"
-                
-            With custom working directory:
-                "apptainer exec --pwd /workspace /containers/benchmark.sif python benchmark.py"
         """
         pass
 
@@ -355,69 +325,72 @@ class Service(Job):
         if self.ports is None:
             self.ports = []
     
-    @abc.abstractmethod
-    def get_health_check_commands(self) -> List[str]:
-        """
-        Health checks are crucial for verifying that a service has started successfully
-        and is ready to handle requests. These commands are typically executed after
-        the service has been started but before considering the deployment complete.
+    def generate_script_commands(self) -> List[str]:
+        """Default service script generation - can be overridden if needed"""
+        commands = []
         
-        Returns:
-            List[str]: List of bash commands that verify service health.
-                Commands should:
-                - Test service responsiveness (HTTP endpoints, port connectivity)
-                - Validate critical functionality
-                - Return non-zero exit codes on failure
-                - Include appropriate timeouts and retries
+        # Add service setup
+        commands.extend(self.get_service_setup_commands())
         
-        Example Implementations:
-            [
-                "sleep 5",  # Allow startup time
-                "curl -f http://localhost:8080/health",
-                "curl -f http://localhost:8080/api/status"
-            ]
+        # Start the service
+        commands.append(f"# Start the {self.name} service")
+        commands.append(self.get_container_command())
         
-        Error Handling:
-            - Commands should exit with code 1 on failure
-            - Include meaningful error messages for debugging
-            - Consider retry logic for transient failures
-            - Log health check results for monitoring
-        """
-        pass
+        # Add health check and monitoring
+        commands.extend(self.get_health_check_commands())
+        
+        return commands
     
-    @abc.abstractmethod
+    def get_container_command(self) -> str:
+        """Default container command for services - can be overridden if needed"""
+        cmd_parts = ["apptainer exec"]
+        
+        # Add GPU support if gres indicates GPU usage
+        if self.resources.get('gres', '').startswith('gpu:'):
+            cmd_parts.append("--nv")
+        
+        # Add environment variables
+        for key, value in self.environment.items():
+            cmd_parts.append(f"--env {key}={value}")
+        
+        # Add container image with base path
+        container_base_path = self.config.get('containers', {}).get('base_path', '')
+        if container_base_path and not self.container_image.startswith('/'):
+            container_path = f"{container_base_path}/{self.container_image}"
+        else:
+            container_path = self.container_image
+        cmd_parts.append(container_path)
+        
+        # Add command and args
+        if self.command:
+            cmd_parts.append(self.command)
+            if self.args:
+                cmd_parts.extend(self.args)
+        
+        # Run in background for services
+        cmd_parts.append("&")
+        
+        return " ".join(cmd_parts)
+    
+    def get_health_check_commands(self) -> List[str]:
+        """Default health check and monitoring - can be overridden if needed"""
+        return [
+            "",
+            f"# Keep the job alive and monitor {self.name} service",
+            "sleep 30  # Allow service to start",
+            "",
+            "# Simple monitoring loop",
+            f"echo '{self.name} service started, monitoring...'",
+            "while kill -0 $! 2>/dev/null; do",
+            "    sleep 60",
+            "done",
+            "",
+            f"echo '{self.name} service finished'"
+        ]
+    
     def get_service_setup_commands(self) -> List[str]:
-        """
-        Get service-specific setup and initialization commands.
-        Setup commands prepare the environment and resources needed for the service
-        to run successfully. These commands are executed before starting the service
-        and should handle all necessary initialization tasks.
-        
-        Returns:
-            List[str]: List of bash commands for service setup and initialization.
-                Commands typically handle:
-                - Directory creation and permissions
-                - Configuration file preparation
-                - Data initialization
-                - Dependency verification
-                - Pre-startup validation
-        
-        Example Implementations:
-            [
-                "mkdir -p /data/postgres /logs",
-                "chown postgres:postgres /data/postgres",
-                "chmod 700 /data/postgres",
-                "echo 'Initializing database...'",
-                "initdb -D /data/postgres"
-            ]
-        
-        Error Handling:
-            - Use 'set -e' for fail-fast behavior
-            - Include validation steps after setup operations
-            - Provide clear error messages for troubleshooting
-            - Consider idempotent operations for retry safety
-        """
-        pass
+        """Default service setup - can be overridden if needed"""
+        return []
 
 
 @dataclass
@@ -446,72 +419,228 @@ class Client(Job):
     duration: int = 300
     parameters: Dict[str, Any] = None
     
+    # Script configuration
+    script_name: str = None  # Name of the Python script to run (e.g., "ollama_benchmark.py")
+    script_local_path: str = None  # Local path to find the script (e.g., "benchmark_scripts/")
+    script_remote_path: str = None  # Remote path where script should be located (e.g., "$HOME/benchmark_scripts/")
+    
     def __post_init__(self):
         if self.target_service is None:
             self.target_service = {}
         if self.parameters is None:
             self.parameters = {}
+        
+        # Set default script configuration if not specified
+        if self.script_name is None:
+            if "benchmark" in self.name.lower():
+                self.script_name = f"{self.name}.py"
+            else:
+                self.script_name = f"{self.name}_benchmark.py"
+        
+        if self.script_local_path is None:
+            self.script_local_path = "benchmark_scripts/"
+            
+        if self.script_remote_path is None:
+            self.script_remote_path = "$HOME/benchmark_scripts/"
     
     def get_target_service_name(self) -> str:
         """Get the name of the target service this client connects to"""
         return self.target_service.get('name', 'unknown')
     
+    @classmethod
+    def from_recipe(cls, recipe: Dict[str, Any], config: Dict[str, Any]) -> 'Client':
+        """
+        Default Client factory method that parses script configuration from YAML.
+        Can be overridden by specific client implementations if needed.
+        """
+        # Extract client configuration
+        client_config = recipe.get('client', recipe)
+        
+        # Parse script configuration
+        script_config = client_config.get('script', {})
+        script_name = script_config.get('name')
+        script_local_path = script_config.get('local_path')
+        script_remote_path = script_config.get('remote_path')
+        
+        return cls(
+            name=client_config.get('name', 'client'),
+            container_image=client_config.get('container_image', ''),
+            resources=client_config.get('resources', {}),
+            environment=client_config.get('environment', {}),
+            command=client_config.get('command'),
+            args=client_config.get('args', []),
+            target_service=client_config.get('target_service', {}),
+            duration=client_config.get('duration', 300),
+            parameters=client_config.get('parameters', {}),
+            script_name=script_name,
+            script_local_path=script_local_path,
+            script_remote_path=script_remote_path,
+            config=config
+        )
+    
+    def generate_script_commands(self) -> List[str]:
+        """Default client script commands"""
+        commands = []
+        commands.extend(self.get_client_setup_commands())
+        commands.extend(self.get_container_execution_commands())
+        return commands
+    
+    def get_container_execution_commands(self) -> List[str]:
+        """Default container execution for clients"""
+        container_cmd = self.get_container_command()
+        return [
+            f"# Execute client workload",
+            f"echo \"Starting client: {self.name}\"",
+            container_cmd,
+            f"echo \"Client {self.name} completed\"",
+        ]
+    
     def get_target_service(self) -> Dict[str, Any]:
         """Get the target service configuration"""
         return self.target_service
     
-    @abc.abstractmethod
-    def get_client_setup_commands(self) -> List[str]:
-        """
-        Get client-specific setup and initialization commands.
-        Setup commands prepare the client environment for executing the workload
-        against the target service. These commands handle initialization tasks
-        specific to the client type and workload requirements.
+    def generate_script_commands(self) -> List[str]:
+        """Default client script generation - can be overridden if needed"""
+        commands = []
         
-        Returns:
-            List[str]: List of bash commands for client setup and preparation.
-                Commands typically handle:
-                - Working directory creation
-                - Configuration file preparation  
-                - Tool and dependency initialization
-                - Target service validation
-                - Result collection setup
+        # Add client setup
+        commands.extend(self.get_client_setup_commands())
         
-        Example Implementations:
-            [
-                "mkdir -p /results /logs",
-                "echo 'Benchmark Client Setup' > /logs/setup.log",
-                "echo 'Target Service: {self.target_service}' >> /logs/setup.log",
-                "date >> /logs/setup.log"
-            ]
-        """
-        pass
+        # Add container execution command
+        commands.extend([
+            f"# Start the {self.name} workload",
+            f"echo '=== {self.name.upper()} EXECUTION ==='",
+            f"echo 'Container command: {self.get_container_command()}'",
+            "echo '===================================='",
+            "",
+            self.get_container_command(),
+            "",
+            f"echo '{self.name} execution completed'"
+        ])
+        
+        # Add result collection
+        commands.extend(self.get_result_collection_commands())
+        
+        return commands
     
-    @abc.abstractmethod
+    def get_container_command(self) -> str:
+        """Default container command for clients - can be overridden if needed"""
+        cmd_parts = ["apptainer exec"]
+        
+        # Add GPU support if gres indicates GPU usage
+        if self.resources.get('gres', '').startswith('gpu:'):
+            cmd_parts.append("--nv")
+        
+        # Add environment variables
+        for key, value in self.environment.items():
+            cmd_parts.append(f"--env {key}={value}")
+        
+        # Mount benchmark scripts directory - simplified path
+        scripts_dir = self.config.get('benchmark', {}).get('scripts_dir', '$HOME/benchmark_scripts')
+        cmd_parts.append(f"--bind {scripts_dir}:/app")
+        
+        # Add container image with base path
+        container_base_path = self.config.get('containers', {}).get('base_path', '')
+        if container_base_path and not self.container_image.startswith('/'):
+            container_path = f"{container_base_path}/{self.container_image}"
+        else:
+            container_path = self.container_image
+        cmd_parts.append(container_path)
+        
+        # Build the command - simplified approach
+        if self.command and self.args:
+            # Use explicit command and args from YAML
+            python_cmd = f"{self.command} {' '.join(self.args)}"
+        else:
+            # Build Python command with script name - avoid double "benchmark"
+            if "benchmark" in self.name.lower():
+                script_name = f"{self.name}.py"
+            else:
+                script_name = f"{self.name}_benchmark.py"
+            
+            # Use configured script name if available
+            if hasattr(self, 'script_name') and self.script_name:
+                script_name = self.script_name
+                
+            python_cmd = f"python /app/{script_name}"
+            
+            # Add endpoint parameter
+            endpoint = self.resolve_service_endpoint()
+            if endpoint:
+                python_cmd += f" --endpoint={endpoint}"
+            
+            # Add other parameters
+            for key, value in self.parameters.items():
+                if key == 'endpoint':  # Skip endpoint as it's handled above
+                    continue
+                cli_key = key.replace('_', '-')
+                python_cmd += f" --{cli_key}={value}"
+        
+        # Run inside container - simplified without complex dependency handling
+        cmd_parts.extend(["bash", "-c", f'"pip install -q requests && {python_cmd}"'])
+        
+        return " ".join(cmd_parts)
+    
+    def get_client_setup_commands(self) -> List[str]:
+        """Default client setup - uses script configuration from YAML"""
+        return [
+            "# Client setup and debugging information",
+            f"echo '=== {self.name.upper()} DEBUG INFO ==='",
+            "echo \"Client node: $(hostname)\"",
+            "echo \"Client IP: $(hostname -I | awk '{print $1}')\"",
+            "echo \"Target service host: ${TARGET_SERVICE_HOST:-'not set'}\"",
+            f"echo \"Target service: {self.get_target_service_name()}\"",
+            "echo '========================='",
+            "",
+            f"# Ensure benchmark script directory exists",
+            f"mkdir -p {self.script_remote_path.replace('$HOME/', '$HOME/')}",
+            "",
+            f"# Check if benchmark script exists",
+            f"SCRIPT_PATH=\"{self.script_remote_path.rstrip('/')}/{self.script_name}\"",
+            "if [ ! -f \"$SCRIPT_PATH\" ]; then",
+            f"    echo \"ERROR: Benchmark script not found at $SCRIPT_PATH\"",
+            f"    echo \"Please ensure {self.script_name} is uploaded to the scripts directory\"",
+            "    exit 1",
+            "fi",
+            f"echo \"Using benchmark script: $SCRIPT_PATH\"",
+            ""
+        ]
+    
     def resolve_service_endpoint(self, target_service_host: str = None, 
-                                default_port: int = 8080, protocol: str = "http") -> str:
-        """
-        This method implements service discovery and endpoint resolution logic,
-        combining host information, port configuration, and protocol selection
-        into a complete connection URL that the client can use to reach its target service.
+                               default_port: int = None, protocol: str = "http") -> str:
+        """Default service endpoint resolution - can be overridden if needed"""
+        # Check if endpoint is explicitly set in parameters
+        endpoint_from_params = self.parameters.get('endpoint')
+        if endpoint_from_params:
+            return endpoint_from_params
         
-        Args:
-            target_service_host (str, optional): Hostname or IP address where the target
-                service is running. If None, the method should determine the host from
-                self.target_service configuration or use appropriate defaults.
-                
-            default_port (int, optional): Default port number to use if not specified
-                in service configuration. Default: 8080 (common for HTTP services)
-                
-            protocol (str, optional): Network protocol to use for connection
-                (e.g., 'http', 'https', 'tcp', 'grpc'). Default: 'http'
+        # Use TARGET_SERVICE_HOST environment variable
+        host = target_service_host or "${TARGET_SERVICE_HOST}"
         
-        Returns:
-            str: Complete service endpoint URL ready for client connections.
-                Format depends on protocol but typically follows URL conventions:
-                - HTTP/HTTPS: "http://hostname:port" or "https://hostname:port/path"
-        """
-        pass
+        # Get port from target service config or use default
+        if self.target_service and isinstance(self.target_service, dict):
+            port = self.target_service.get('port', default_port or 8080)
+        else:
+            port = default_port or 8080
+        
+        # Build endpoint
+        if protocol:
+            return f"{protocol}://{host}:{port}"
+        else:
+            return f"{host}:{port}"
+    
+    def get_result_collection_commands(self) -> List[str]:
+        """Default result collection - can be overridden if needed"""
+        output_file = self.parameters.get('output_file', f'/tmp/{self.name}_results.json')
+        return [
+            "",
+            f"# Copy {self.name} results back to submit directory",
+            "mkdir -p $SLURM_SUBMIT_DIR/results",
+            f"cp {output_file} $SLURM_SUBMIT_DIR/results/ 2>/dev/null || echo 'Warning: Could not copy results file'",
+            f"echo '{self.name} results collection completed'",
+            "",
+            f"echo '{self.name} client workload completed'"
+        ]
     
     def _get_docker_source(self) -> Optional[str]:
         """Override to use 'benchmark_client' docker source for all clients"""
@@ -651,14 +780,16 @@ class JobFactory:
                 Must include a 'client' section with 'target_service' containing a 'name' field.
                 Expected structure:
                 {
-                    'target_service': {
-                        'name': 'ollama'               # Required: maps to registry
-                    },
-                    'container_image': '...',          # Required: container specification
-                    'duration': 300,                   # Optional: execution duration
-                    'parameters': {...},               # Optional: workload parameters
-                    'resources': {...},                # Optional: SLURM resources
-                    # ... client-specific fields
+                    'client': {
+                        'target_service': {
+                            'name': 'ollama'               # Required: maps to registry
+                        },
+                        'container_image': '...',          # Required: container specification
+                        'duration': 300,                   # Optional: execution duration
+                        'parameters': {...},               # Optional: workload parameters
+                        'resources': {...},                # Optional: SLURM resources
+                        # ... client-specific fields
+                    }
                 }
             config (Dict[str, Any]): Global configuration dictionary that will be
                 stored in the client instance for use by other methods. Contains
@@ -682,12 +813,8 @@ class JobFactory:
             Exception: Any exception raised by the concrete client's from_recipe() method,
                 typically due to invalid configuration or validation failures.
         """
-        target_service = recipe.get('target_service', {})
+        target_service = recipe.get('client', {}).get('target_service', {})
         service_name = target_service.get('name', 'unknown')
-        
-        print("debug\n\n\n")
-        print(cls._client_registry)
-        print(recipe)
 
         if service_name in cls._client_registry:
             client_class = cls._client_registry[service_name]

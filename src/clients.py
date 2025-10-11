@@ -83,37 +83,8 @@ class ClientsModule(BaseModule):
             
             # Submit job via SSH
             if self.ssh_client:
-                # Upload benchmark script if this is an ollama client
-                if client.get_target_service_name() == "ollama":
-                    # Try the new ensure_benchmark_script method first
-                    if hasattr(self.ssh_client, 'ensure_benchmark_script'):
-                        if self.ssh_client.ensure_benchmark_script("ollama_benchmark.py"):
-                            self.logger.info("Benchmark script uploaded to remote home directory")
-                        else:
-                            self.logger.warning("Failed to upload benchmark script to home directory")
-                    
-                    # Also try the /tmp/ upload as fallback
-                    possible_paths = [
-                        "benchmark_scripts/ollama_benchmark.py",
-                        "../benchmark_scripts/ollama_benchmark.py"
-                    ]
-                    
-                    benchmark_script_path = None
-                    for path in possible_paths:
-                        if os.path.exists(path):
-                            benchmark_script_path = path
-                            break
-                    
-                    if benchmark_script_path:
-                        remote_script_path = f"/tmp/ollama_benchmark_{client_id}.py"
-                        self.logger.info(f"Attempting to upload {benchmark_script_path} to {remote_script_path}")
-                        if self.ssh_client.upload_file(benchmark_script_path, remote_script_path):
-                            self.logger.info(f"Successfully uploaded benchmark script to {remote_script_path}")
-                        else:
-                            self.logger.error("Failed to upload benchmark script to /tmp/")
-                    else:
-                        self.logger.error(f"Benchmark script not found in any of these locations: {possible_paths}")
-                        self.logger.error(f"Current working directory: {os.getcwd()}")
+                # Ensure benchmark script is uploaded before job submission
+                self._ensure_script_uploaded(client, client_id)
                 
                 # DEBUG: Log the generated script content
                 self.logger.debug(f"Generated SLURM script for client {client_id}:\n{script_content}")
@@ -261,7 +232,8 @@ class ClientsModule(BaseModule):
             merged_def = client_def
         
         # Use factory to create client instance
-        return JobFactory.create_client(merged_def, self.config)
+        full_recipe = {'client': merged_def}
+        return JobFactory.create_client(full_recipe, self.config)
     
     def cleanup_completed_clients(self):
         """Remove completed/failed clients from tracking"""
@@ -273,3 +245,81 @@ class ClientsModule(BaseModule):
         for client_id in completed_clients:
             self.logger.info(f"Cleaning up completed client {client_id}")
             del self._running_instances[client_id]
+    
+    def _ensure_script_uploaded(self, client, client_id: str):
+        """Ensure client script is uploaded to remote host before job submission"""
+        # Get script configuration from client
+        script_name = getattr(client, 'script_name', None)
+        local_path = getattr(client, 'script_local_path', 'benchmark_scripts/')
+        remote_path = getattr(client, 'script_remote_path', '$HOME/benchmark_scripts/')
+        
+        if not script_name:
+            self.logger.warning(f"No script name configured for client {client_id}, skipping upload")
+            return
+        
+        # Expand remote path
+        if remote_path.startswith('$HOME'):
+            remote_path = remote_path.replace('$HOME', '')
+            if remote_path.startswith('/'):
+                remote_path = remote_path[1:]
+        
+        remote_script_path = f"{remote_path.rstrip('/')}/{script_name}"
+        
+        # Check if script already exists remotely
+        check_cmd = f"test -f {remote_script_path} && echo 'exists' || echo 'missing'"
+        try:
+            exit_code, stdout, stderr = self.ssh_client.execute_command(check_cmd)
+            
+            if exit_code == 0 and 'exists' in stdout:
+                self.logger.info(f"Script {script_name} already exists at {remote_script_path}")
+                return
+        except Exception as e:
+            self.logger.warning(f"Failed to check if script exists remotely: {e}")
+            # Continue with upload attempt
+        
+        # Find script locally
+        local_candidates = [
+            f"{local_path.rstrip('/')}/{script_name}",
+            f"../{local_path.rstrip('/')}/{script_name}",
+            script_name,  # Current directory
+        ]
+        
+        # Special handling for ollama_benchmark -> ollama.py mapping
+        if script_name == "ollama_benchmark.py":
+            local_candidates.extend([
+                f"{local_path.rstrip('/')}/ollama.py",
+                f"../{local_path.rstrip('/')}/ollama.py",
+                "ollama.py"
+            ])
+        
+        local_script_path = None
+        for candidate in local_candidates:
+            if os.path.exists(candidate):
+                local_script_path = candidate
+                break
+        
+        if not local_script_path:
+            self.logger.error(f"Script {script_name} not found locally in: {local_candidates}")
+            self.logger.error(f"Current working directory: {os.getcwd()}")
+            return
+        
+        # Create remote directory and upload
+        self.logger.info(f"Uploading {local_script_path} to {remote_script_path}")
+        
+        # Ensure remote directory exists
+        remote_dir = '/'.join(remote_script_path.split('/')[:-1])
+        if remote_dir:
+            try:
+                self.ssh_client.execute_command(f"mkdir -p {remote_dir}")
+            except Exception as e:
+                self.logger.warning(f"Failed to create remote directory {remote_dir}: {e}")
+        
+        if self.ssh_client.upload_file(local_script_path, remote_script_path):
+            # Make script executable
+            try:
+                self.ssh_client.execute_command(f"chmod +x {remote_script_path}")
+            except Exception as e:
+                self.logger.warning(f"Failed to make script executable: {e}")
+            self.logger.info(f"Successfully uploaded script: {local_script_path} -> {remote_script_path}")
+        else:
+            self.logger.error(f"Failed to upload script: {local_script_path} -> {remote_script_path}")
