@@ -25,21 +25,6 @@ scripts_dir: "scripts"
 results_dir: "results"
 logs_dir: "logs"
 
-# Container settings
-containers:
-  base_path: "/mnt/tier2/users/u103235"  # Path on HPC cluster where containers are stored
-  force_rebuild: false  # Force rebuild even if container exists
-  docker_sources:  # Docker sources for automatic building
-    ollama: "docker://ollama/ollama:latest"
-    postgres: "docker://postgres:latest"
-    chroma: "docker://chromadb/chroma:latest"
-    benchmark_client: "docker://python:3.11-slim"
-  images:
-    ollama: "ollama_latest.sif"
-    postgres: "postgres_latest.sif"
-    chroma: "chroma_latest.sif"
-    benchmark_client: "benchmark_client.sif"
-
 # Monitoring settings (placeholder for future implementation)
 monitoring:
   enabled: false

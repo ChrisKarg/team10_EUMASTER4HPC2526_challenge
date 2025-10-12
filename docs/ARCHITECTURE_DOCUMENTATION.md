@@ -57,56 +57,69 @@ classDiagram
         +container_image: str
         +resources: dict
         +environment: dict
-        +from_recipe(recipe_dict) Job*
-        +generate_script_commands(config) list*
-        +get_container_command(config) str*
-        +generate_slurm_script(config, job_id, target_host) str
-        +_generate_container_build_commands(config) list
-        +_get_docker_source(config) str
+        +config: dict
+        +from_recipe(recipe: dict, config: dict) Job*
+        +generate_script_commands() list*
+        +get_container_command() str*
+        +generate_slurm_script(job_id: str, target_host: str) str
+        +_generate_container_build_commands() list
+        +_get_docker_source() str
     }
     
     class Service {
         <<abstract>>
         +ports: list
+        +container: dict
         +get_health_check_commands() list*
         +get_service_setup_commands() list*
+        +_resolve_container_path() str
+        +_get_docker_source() str
     }
     
     class Client {
         <<abstract>>
         +target_service: dict
-        +workload_type: str
         +duration: int
         +parameters: dict
+        +script_name: str
+        +script_local_path: str
+        +script_remote_path: str
+        +container: dict
         +get_client_setup_commands() list*
         +resolve_service_endpoint(target_host, port, protocol) str*
-        +_get_docker_source(config) str
+        +get_target_service_name() str
+        +_get_docker_source() str
     }
     
     %% Concrete Implementations
     class OllamaService {
-        +from_recipe(recipe_dict) OllamaService
-        +generate_script_commands(config) list
-        +get_container_command(config) str
+        +from_recipe(recipe: dict, config: dict) OllamaService
+        +generate_script_commands() list
+        +get_container_command() str
         +get_health_check_commands() list
         +get_service_setup_commands() list
+        +_resolve_container_path() str
+        +_get_docker_source() str
     }
     
     class OllamaClient {
-        +from_recipe(recipe_dict) OllamaClient
-        +generate_script_commands(config) list
-        +get_container_command(config) str
+        +from_recipe(recipe: dict, config: dict) OllamaClient
+        +generate_script_commands() list
+        +get_container_command() str
         +get_client_setup_commands() list
         +resolve_service_endpoint(target_host, port, protocol) str
+        +get_target_service_name() str
+        +_resolve_container_path() str
+        +_get_docker_source() str
     }
     
     %% Factory Pattern
     class JobFactory {
         <<factory>>
-        +register_service(service_type, service_class)
-        +register_client(client_type, client_class)
-        +create_service(recipe_dict) Service
-        +create_client(recipe_dict) Client
+        +register_service(service_type: str, service_class: type)
+        +register_client(client_type: str, client_class: type)
+        +create_service(recipe: dict, config: dict) Service
+        +create_client(recipe: dict, config: dict) Client
         +list_available_services() list
         +list_available_clients() list
     }
@@ -275,8 +288,8 @@ graph TD
     JOB --> CLT
     SRV --> OSRV
     CLT --> OCLT
-    JF ..> SRV
-    JF ..> CLT
+    JF --> SRV
+    JF --> CLT
     
     %% External Systems
     SSH --> HPC[🏢 HPC Cluster<br/>SLURM Workload Manager]
@@ -323,13 +336,13 @@ sequenceDiagram
     Note over BO,HPC: Service Deployment Phase
     BO->>SM: start_service(service_recipe)
     SM->>SM: Generate unique service_id
-    SM->>JF: create_service(recipe_dict)
-    JF->>SRV: new OllamaService(recipe_dict)
+    SM->>JF: create_service(recipe_dict, config)
+    JF->>SRV: new OllamaService(recipe_dict, config)
     SRV-->>JF: service instance
     JF-->>SM: service instance
-    SM->>SRV: generate_slurm_script(config, id)
-    SRV->>SRV: generate_script_commands(config)
-    SRV->>SRV: _generate_container_build_commands(config)
+    SM->>SRV: generate_slurm_script(job_id)
+    SRV->>SRV: generate_script_commands()
+    SRV->>SRV: _generate_container_build_commands()
     SRV-->>SM: complete SLURM script
     SM->>SSH: submit_slurm_job(script)
     SSH->>HPC: sbatch script.sh
@@ -349,13 +362,13 @@ sequenceDiagram
     Note over BO,HPC: Client Deployment Phase
     BO->>CM: start_client(client_recipe, service_id)
     CM->>CM: Generate unique client_id
-    CM->>JF: create_client(recipe_dict)
-    JF->>CLT: new OllamaClient(recipe_dict)
+    CM->>JF: create_client(recipe_dict, config)
+    JF->>CLT: new OllamaClient(recipe_dict, config)
     CLT-->>JF: client instance
     JF-->>CM: client instance
-    CM->>CLT: generate_slurm_script(config, id, target_host)
-    CLT->>CLT: generate_script_commands(config)
-    CLT->>CLT: _generate_container_build_commands(config)
+    CM->>CLT: generate_slurm_script(job_id, target_host)
+    CLT->>CLT: generate_script_commands()
+    CLT->>CLT: _generate_container_build_commands()
     CLT-->>CM: complete SLURM script
     CM->>SSH: submit_slurm_job(script)
     SSH->>HPC: sbatch script.sh
@@ -382,9 +395,9 @@ sequenceDiagram
     SM->>SM: generate_id()
     
     Note over SM,SRV: Script Generation
-    SM->>SRV: generate_slurm_script(config, service_id)
-    SRV->>SRV: generate_script_commands(config)
-    SRV->>SRV: _generate_container_build_commands(config)
+    SM->>SRV: generate_slurm_script(service_id)
+    SRV->>SRV: generate_script_commands()
+    SRV->>SRV: _generate_container_build_commands()
     SRV-->>SM: Complete SLURM script
     
     Note over SM,HPC: Job Submission
@@ -516,22 +529,37 @@ This whole part is to be revised when we'll actually start writing code
 1. **Create Service Class**:
 ```python
 class MyNewService(Service):
-    def generate_slurm_directives(self, slurm_config: dict) -> List[str]:
-        # Return service-specific SLURM directives
-        directives = [
-            "#!/bin/bash -l",
-            f"#SBATCH --job-name={self.get_name()}",
-            # Add service-specific SLURM directives
-        ]
-        return directives
+    @classmethod
+    def from_recipe(cls, recipe: Dict[str, Any], config: Dict[str, Any]) -> 'MyNewService':
+        """Create MyNewService from recipe dictionary"""
+        service_def = recipe.get('service', {})
+        
+        return cls(
+            name=service_def.get('name', 'mynewservice'),
+            container_image=service_def.get('container_image', 'mynewservice.sif'),
+            resources=service_def.get('resources', {}),
+            environment=service_def.get('environment', {}),
+            config=config,
+            ports=service_def.get('ports', []),
+            command=service_def.get('command'),
+            args=service_def.get('args', []),
+            container=service_def.get('container', {})
+        )
     
-    def generate_container_commands(self, script_generator) -> List[str]:
-        # Return service-specific container commands
-        commands = [
-            "# Service-specific setup",
-            f"apptainer exec {self.get_container_image()} {self.get_command()}",
-            # Add service-specific logic
-        ]
+    def generate_script_commands(self) -> List[str]:
+        """Generate service-specific script commands"""
+        commands = []
+        
+        # Add service setup
+        commands.extend(self.get_service_setup_commands())
+        
+        # Start the service
+        commands.append(f"# Start the {self.name} service")
+        commands.append(self.get_container_command())
+        
+        # Add health check and monitoring
+        commands.extend(self.get_health_check_commands())
+        
         return commands
 ```
 
@@ -544,14 +572,16 @@ JobFactory.register_service("my_new_service", MyNewService)
 3. **Create Service Recipe**:
 ```yaml
 service:
-  type: my_new_service
-  name: "My New Service"
+  name: my_new_service
   container_image: "my_new_service.sif"
   command: "my_service_command"
   resources:
     time: "01:00:00"
     partition: "gpu"
     nodes: 1
+  container:
+    docker_source: "docker://my_org/my_new_service:latest"
+    image_path: "$HOME/containers/my_new_service.sif"
 ```
 
 ### Adding a New Client Type
@@ -559,45 +589,84 @@ service:
 1. **Create Client Class**:
 ```python
 class MyNewClient(Client):
-    def generate_slurm_directives(self, slurm_config: dict) -> List[str]:
-        # Return client-specific SLURM directives
-        directives = [
-            "#!/bin/bash -l", 
-            f"#SBATCH --job-name={self.get_name()}_benchmark",
-            # Add client-specific SLURM directives
-        ]
-        return directives
-    
-    def generate_container_commands(self, script_generator) -> List[str]:
-        # Return client-specific container commands
-        commands = [
-            "# Client-specific setup",
-            "# Benchmark execution logic",
-            f"apptainer exec {self.get_container_image()} python /app/my_benchmark.py",
-            # Add result collection
-        ]
+    @classmethod
+    def from_recipe(cls, recipe: Dict[str, Any], config: Dict[str, Any]) -> 'MyNewClient':
+        """Create MyNewClient from recipe dictionary"""
+        client_def = recipe.get('client', {})
+        
+        # Parse script configuration
+        script_config = client_def.get('script', {})
+        script_name = script_config.get('name')
+        script_local_path = script_config.get('local_path')
+        script_remote_path = script_config.get('remote_path')
+        
+        return cls(
+            name=client_def.get('name', 'mynewclient'),
+            container_image=client_def.get('container_image', 'benchmark_client.sif'),
+            resources=client_def.get('resources', {}),
+            environment=client_def.get('environment', {}),
+            config=config,
+            command=client_def.get('command'),
+            args=client_def.get('args', []),
+            target_service=client_def.get('target_service', {}),
+            duration=client_def.get('duration', 300),
+            parameters=client_def.get('parameters', {}),
+            script_name=script_name,
+            script_local_path=script_local_path,
+            script_remote_path=script_remote_path,
+            container=client_def.get('container', {})
+        )
+        
+    def generate_script_commands(self) -> List[str]:
+        """Generate client-specific script commands"""
+        commands = []
+        
+        # Add client setup
+        commands.extend(self.get_client_setup_commands())
+        
+        # Add container build commands
+        container_build_commands = self._generate_container_build_commands()
+        if container_build_commands:
+            commands.extend(container_build_commands)
+        
+        # Add container execution command
+        commands.extend([
+            f"# Start the {self.name} workload",
+            f"echo '=== {self.name.upper()} EXECUTION ==='",
+            self.get_container_command(),
+            f"echo '{self.name} execution completed'"
+        ])
+        
+        # Add result collection
+        commands.extend(self.get_result_collection_commands())
+        
         return commands
 ```
 
 2. **Register with Factory**:
 ```python
 from services import JobFactory
-JobFactory.register_client("my_new_client", MyNewClient)
+JobFactory.register_client("my_new_service", MyNewClient)  # Register by target service name
 ```
 
 3. **Create Client Recipe**:
 ```yaml
 client:
-  type: my_new_client
-  name: "My New Benchmark Client"
-  workload_type: "my_new_benchmark"
+  name: "my_new_benchmark"
   container_image: "benchmark_client.sif"
   target_service:
-    type: "my_new_service"
+    name: "my_new_service"
     port: 8080
   parameters:
     benchmark_duration: 300
     test_mode: "stress"
+  script:
+    name: "my_new_benchmark.py"
+    local_path: "benchmark_scripts/"
+    remote_path: "$HOME/benchmark_scripts/"
+  container:
+    docker_source: "docker://my_org/my_benchmark_client:latest"
+    image_path: "$HOME/containers/my_benchmark_client.sif"
 ```
 
 ### Benefits of the New Architecture

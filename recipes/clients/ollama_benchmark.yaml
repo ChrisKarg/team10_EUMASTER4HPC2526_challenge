@@ -5,6 +5,13 @@ client:
   container_image: benchmark_client.sif
   duration: 300  # 5 minutes
 
+  # Container configuration
+  container:
+    # Docker source for automatic building if image doesn't exist
+    docker_source: "docker://python:3.11-slim"
+    # Path where container image is stored/should be downloaded
+    image_path: "$HOME/containers/ciao/benchmark_client.sif"
+
   # Resource requirements (SLURM job configuration)
   resources:
     partition: gpu  # Same partition as service for better connectivity

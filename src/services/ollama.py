@@ -23,7 +23,8 @@ class OllamaService(Service):
             config=config,
             ports=service_def.get('ports', [11434]),
             command=service_def.get('command', 'ollama'),
-            args=service_def.get('args', ['serve'])
+            args=service_def.get('args', ['serve']),
+            container=service_def.get('container', {})
         )
     
     # All other methods use the default implementations from Service base class
@@ -57,7 +58,8 @@ class OllamaClient(Client):
             parameters=client_def.get('parameters', {}),
             script_name=script_name,
             script_local_path=script_local_path,
-            script_remote_path=script_remote_path
+            script_remote_path=script_remote_path,
+            container=client_def.get('container', {})
         )
     
     def resolve_service_endpoint(self, target_service_host: str = None, 
@@ -78,7 +80,7 @@ class OllamaClient(Client):
             port = 11434
         
         # Return Ollama-specific endpoint
-        return f"http://{host}:{port}"
+        return f"{protocol}://{host}:{port}"
     
     # All other methods use the default implementations from Client base class
     # The script management is now simplified and predictable

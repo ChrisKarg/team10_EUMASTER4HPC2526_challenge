@@ -318,12 +318,19 @@ class Service(Job):
         ports (List[int]): Network ports that the service exposes for client connections.
             These ports are used for service discovery and health checking.
             Default: Empty list (no exposed ports)
+        container (Dict[str, Any]): Container configuration including docker_source
+            and image_path. When image exists at image_path, it's used; when not found,
+            it's downloaded from docker_source and placed at image_path.
+            Default: Empty dictionary
     """
     ports: List[int] = None
+    container: Dict[str, Any] = None
     
     def __post_init__(self):
         if self.ports is None:
             self.ports = []
+        if self.container is None:
+            self.container = {}
     
     def generate_script_commands(self) -> List[str]:
         """Default service script generation - can be overridden if needed"""
@@ -391,6 +398,90 @@ class Service(Job):
     def get_service_setup_commands(self) -> List[str]:
         """Default service setup - can be overridden if needed"""
         return []
+    
+    def _get_docker_source(self) -> Optional[str]:
+        """Override to use container config from service YAML instead of global config"""
+        # First check if docker_source is specified in service container config
+        if self.container and 'docker_source' in self.container:
+            return self.container['docker_source']
+        
+        # Fallback to global config for backward compatibility
+        docker_sources = self.config.get('containers', {}).get('docker_sources', {})
+        return docker_sources.get(self.name)
+    
+    def get_container_command(self) -> str:
+        """Default container command for services - enhanced with local container paths"""
+        cmd_parts = ["apptainer exec"]
+        
+        # Add GPU support if gres indicates GPU usage
+        if self.resources.get('gres', '').startswith('gpu:'):
+            cmd_parts.append("--nv")
+        
+        # Add environment variables
+        for key, value in self.environment.items():
+            cmd_parts.append(f"--env {key}={value}")
+        
+        # Resolve container path using service-specific logic
+        container_path = self._resolve_container_path()
+        cmd_parts.append(container_path)
+        
+        # Add command and args
+        if self.command:
+            cmd_parts.append(self.command)
+            if self.args:
+                cmd_parts.extend(self.args)
+        
+        # Run in background for services
+        cmd_parts.append("&")
+        
+        return " ".join(cmd_parts)
+    
+    def _resolve_container_path(self) -> str:
+        """Resolve the actual container path using service-specific configuration"""
+        # Use image_path from service container config
+        if self.container and 'image_path' in self.container:
+            return self.container['image_path']
+        
+        # Fallback to global config logic for backward compatibility
+        container_base_path = self.config.get('containers', {}).get('base_path', '')
+        if container_base_path and not self.container_image.startswith('/'):
+            return f"{container_base_path}/{self.container_image}"
+        else:
+            return self.container_image
+    
+    def _generate_container_build_commands(self) -> List[str]:
+        """Generate container build commands using simplified logic"""
+        commands = []
+        
+        # Get container path and docker source from service config
+        container_path = self._resolve_container_path()
+        docker_source = self._get_docker_source()
+        
+        if docker_source:
+            # Ensure directory exists (extract directory from container_path)
+            container_dir = '/'.join(container_path.split('/')[:-1])
+            if container_dir:
+                commands.append(f"mkdir -p {container_dir}")
+            
+            commands.extend([
+                "# Container management",
+                f"if [ ! -f \"{container_path}\" ]; then",
+                f"    echo \"Container {container_path} not found, building from {docker_source}...\"",
+                f"    echo \"Starting container build at $(date)\"",
+                f"    apptainer build {container_path} {docker_source}",
+                f"    if [ $? -eq 0 ]; then",
+                f"        echo \"Container built successfully at $(date)\"",
+                f"    else",
+                f"        echo \"Container build failed at $(date)\"",
+                f"        exit 1",
+                f"    fi",
+                "else",
+                f"    echo \"Container {container_path} already exists\"",
+                "fi",
+                ""
+            ])
+        
+        return commands
 
 
 @dataclass
@@ -424,11 +515,16 @@ class Client(Job):
     script_local_path: str = None  # Local path to find the script (e.g., "benchmark_scripts/")
     script_remote_path: str = None  # Remote path where script should be located (e.g., "$HOME/benchmark_scripts/")
     
+    # Container configuration
+    container: Dict[str, Any] = None  # Container config including docker_source and image_path
+    
     def __post_init__(self):
         if self.target_service is None:
             self.target_service = {}
         if self.parameters is None:
             self.parameters = {}
+        if self.container is None:
+            self.container = {}
         
         # Set default script configuration if not specified
         if self.script_name is None:
@@ -500,11 +596,16 @@ class Client(Job):
         return self.target_service
     
     def generate_script_commands(self) -> List[str]:
-        """Default client script generation - can be overridden if needed"""
+        """Default client script generation - includes container build commands"""
         commands = []
         
         # Add client setup
         commands.extend(self.get_client_setup_commands())
+        
+        # Add container build commands (ensure container exists before execution)
+        container_build_commands = self._generate_container_build_commands()
+        if container_build_commands:
+            commands.extend(container_build_commands)
         
         # Add container execution command
         commands.extend([
@@ -524,7 +625,7 @@ class Client(Job):
         return commands
     
     def get_container_command(self) -> str:
-        """Default container command for clients - can be overridden if needed"""
+        """Default container command for clients - uses client container configuration"""
         cmd_parts = ["apptainer exec"]
         
         # Add GPU support if gres indicates GPU usage
@@ -539,12 +640,8 @@ class Client(Job):
         scripts_dir = self.config.get('benchmark', {}).get('scripts_dir', '$HOME/benchmark_scripts')
         cmd_parts.append(f"--bind {scripts_dir}:/app")
         
-        # Add container image with base path
-        container_base_path = self.config.get('containers', {}).get('base_path', '')
-        if container_base_path and not self.container_image.startswith('/'):
-            container_path = f"{container_base_path}/{self.container_image}"
-        else:
-            container_path = self.container_image
+        # Resolve container path using client-specific logic
+        container_path = self._resolve_container_path()
         cmd_parts.append(container_path)
         
         # Build the command - simplified approach
@@ -642,10 +739,56 @@ class Client(Job):
             f"echo '{self.name} client workload completed'"
         ]
     
+    def _resolve_container_path(self) -> str:
+        """Resolve the actual container path using client-specific configuration"""
+        # Use image_path from client container config
+        if self.container and 'image_path' in self.container:
+            return self.container['image_path']
+        
+        # Fallback to container_image field if no container config
+        return self.container_image
+    
+    def _generate_container_build_commands(self) -> List[str]:
+        """Generate container build commands for client using client-specific configuration"""
+        commands = []
+        
+        # Get container path and docker source from client config
+        container_path = self._resolve_container_path()
+        docker_source = self._get_docker_source()
+        
+        if docker_source:
+            # Ensure directory exists (extract directory from container_path)
+            container_dir = '/'.join(container_path.split('/')[:-1])
+            if container_dir:
+                commands.append(f"mkdir -p {container_dir}")
+            
+            commands.extend([
+                "# Client container management",
+                f"if [ ! -f \"{container_path}\" ]; then",
+                f"    echo \"Client container {container_path} not found, building from {docker_source}...\"",
+                f"    echo \"Starting client container build at $(date)\"",
+                f"    apptainer build {container_path} {docker_source}",
+                f"    if [ $? -eq 0 ]; then",
+                f"        echo \"Client container built successfully at $(date)\"",
+                f"    else",
+                f"        echo \"Client container build failed at $(date)\"",
+                f"        exit 1",
+                f"    fi",
+                "else",
+                f"    echo \"Client container {container_path} already exists\"",
+                "fi",
+                ""
+            ])
+        
+        return commands
+    
     def _get_docker_source(self) -> Optional[str]:
-        """Override to use 'benchmark_client' docker source for all clients"""
-        docker_sources = self.config.get('containers', {}).get('docker_sources', {})
-        return docker_sources.get('benchmark_client')
+        """Use docker_source from client container configuration"""
+        if self.container and 'docker_source' in self.container:
+            return self.container['docker_source']
+        
+        # No fallback - clients must specify their container configuration
+        return None
 
 
 class JobFactory:

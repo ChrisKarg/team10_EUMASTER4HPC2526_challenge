@@ -6,6 +6,13 @@ service:
   command: ollama
   args: ["serve"]
 
+  # Container configuration
+  container:
+    # Docker source for automatic building if image doesn't exist
+    docker_source: "docker://ollama/ollama:latest"
+    # Path where container image is stored/should be downloaded
+    image_path: "$HOME/containers/ollama_latest.sif"
+
   # Resource requirements (SLURM job configuration)
   # Here specify what options to include in SLURM script (sbatch)
   resources:
