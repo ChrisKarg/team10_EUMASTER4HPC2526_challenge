@@ -1,0 +1,53 @@
+# Chroma Benchmark Client Configuration
+client:
+  name: chroma_benchmark
+  description: Benchmark client for Chroma vector database
+  container_image: chroma_client.sif
+  duration: 300  # 5 minutes
+
+  # Container configuration
+  container:
+    # Docker source for automatic building if image doesn't exist
+    docker_source: "docker://python:3.11-slim"
+    # Path where container image is stored/should be downloaded
+    image_path: "$HOME/containers/chroma_client.sif"
+
+  # Resource requirements (SLURM job configuration)
+  resources:
+    partition: cpu  # Same partition as service for better connectivity
+    time: "00:30:00"
+    qos: default
+    nodes: 1
+    ntasks: 1
+    ntasks_per_node: 1
+    mem: "4GB"
+
+  # Environment variables
+  environment:
+    BENCHMARK_DURATION: "300"
+    BENCHMARK_TYPE: "chroma"
+    PYTHONUNBUFFERED: "1"  # For real-time log output
+
+  # Benchmark parameters - endpoint will be auto-resolved by orchestrator
+  parameters:
+    # endpoint: auto-resolved from target_service configuration
+    collection_name: "benchmark_collection"
+    num_documents: 1000         # Number of documents to insert
+    embedding_dimension: 384    # Dimension of embeddings (e.g., all-MiniLM-L6-v2)
+    batch_size: 100             # Batch size for insertions
+    num_queries: 100            # Number of similarity search queries
+    top_k: 10                   # Number of results per query
+    output_file: "/tmp/chroma_benchmark_results.json"
+    wait_for_service: 120       # Wait longer for service to be ready
+
+  # Target service configuration (used by orchestrator for service discovery)
+  target_service:
+    name: chroma
+    port: 8000
+    health_check_endpoint: "/api/v1/heartbeat"
+
+  # Script configuration
+  script:
+    name: "chroma_benchmark.py"           # Name of the script to run
+    local_path: "benchmark_scripts/"      # Local directory containing script
+    remote_path: "$HOME/benchmark_scripts/"  # Remote directory for script

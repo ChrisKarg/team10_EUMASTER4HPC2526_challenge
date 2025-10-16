@@ -40,6 +40,7 @@ from .base import Job, Service, Client, JobFactory
 
 # Import specific implementations (this triggers registration)
 from .ollama import OllamaService, OllamaClient
+from .chroma import ChromaService, ChromaClient
 
 # Make key classes available at package level
 __all__ = [
@@ -48,7 +49,9 @@ __all__ = [
     'Client',
     'JobFactory',
     'OllamaService',
-    'OllamaClient'
+    'OllamaClient',
+    'ChromaService',
+    'ChromaClient'
 ]
 
 # Verify registrations happened

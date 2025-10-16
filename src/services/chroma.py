@@ -1,0 +1,89 @@
+"""
+Chroma Vector Database Service and Client implementations
+"""
+
+import logging
+from typing import Dict, Any, List, Optional
+from .base import Service, Client, JobFactory
+
+
+class ChromaService(Service):
+    """Chroma Vector Database service implementation"""
+    
+    @classmethod
+    def from_recipe(cls, recipe: Dict[str, Any], config: Dict[str, Any]) -> 'ChromaService':
+        """Create ChromaService from recipe dictionary"""
+        service_def = recipe.get('service', {})
+        
+        return cls(
+            name=service_def.get('name', 'chroma'),
+            container_image=service_def.get('container_image', 'chroma_latest.sif'),
+            resources=service_def.get('resources', {}),
+            environment=service_def.get('environment', {}),
+            config=config,
+            ports=service_def.get('ports', [8000]),
+            command=service_def.get('command', 'chroma'),
+            args=service_def.get('args', ['run', '--host', '0.0.0.0', '--port', '8000']),
+            container=service_def.get('container', {})
+        )
+    
+    # All other methods use the default implementations from Service base class
+
+
+class ChromaClient(Client):
+    """Chroma benchmark/test client implementation"""
+    
+    @classmethod
+    def from_recipe(cls, recipe: Dict[str, Any], config: Dict[str, Any]) -> 'ChromaClient':
+        """Create ChromaClient from recipe dictionary"""
+        client_def = recipe.get('client', {})
+        
+        # Parse script configuration
+        script_config = client_def.get('script', {})
+        script_name = script_config.get('name')
+        script_local_path = script_config.get('local_path')
+        script_remote_path = script_config.get('remote_path')
+        
+        return cls(
+            name=client_def.get('name', 'chroma_benchmark'),
+            container_image=client_def.get('container_image', 'chroma_client.sif'),
+            resources=client_def.get('resources', {}),
+            environment=client_def.get('environment', {}),
+            config=config,
+            command=client_def.get('command'),
+            args=client_def.get('args', []),
+            target_service=client_def.get('target_service', {}),
+            duration=client_def.get('duration', 300),
+            parameters=client_def.get('parameters', {}),
+            script_name=script_name,
+            script_local_path=script_local_path,
+            script_remote_path=script_remote_path,
+            container=client_def.get('container', {})
+        )
+    
+    def resolve_service_endpoint(self, target_service_host: str = None, 
+                               default_port: int = 8000, protocol: str = "http") -> str:
+        """Resolve Chroma service endpoint - override for Chroma-specific defaults"""
+        # Check if endpoint is explicitly set in parameters
+        endpoint_from_params = self.parameters.get('endpoint')
+        if endpoint_from_params:
+            return endpoint_from_params
+        
+        # Use TARGET_SERVICE_HOST environment variable
+        host = target_service_host or "${TARGET_SERVICE_HOST}"
+        
+        # Get port from target service config or use Chroma default (8000)
+        if self.target_service and isinstance(self.target_service, dict):
+            port = self.target_service.get('port', 8000)
+        else:
+            port = 8000
+        
+        # Return Chroma-specific endpoint
+        return f"{protocol}://{host}:{port}"
+    
+    # All other methods use the default implementations from Client base class
+
+
+# Register the Chroma implementations with the factory
+JobFactory.register_service('chroma', ChromaService)
+JobFactory.register_client('chroma', ChromaClient)

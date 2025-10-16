@@ -4,3 +4,4 @@ venv_meluxina_demo/
 __pycache__/
 .env
 *.log
+venv/
