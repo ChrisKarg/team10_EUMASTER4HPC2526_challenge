@@ -144,6 +144,71 @@ Manages benchmark client workloads that target services.
   - **Parameters**: `client_id` - Client identifier
   - **Returns**: Dictionary with client status details
 
+### MonitorsModule
+
+Manages Prometheus monitoring instances for metrics collection.
+
+**Note**: Prometheus runs as a **service** (tracked by ServersModule). MonitorsModule provides monitoring-specific utilities and delegates to ServersModule for service operations.
+
+#### Key Methods
+
+- `list_available_services() -> List[str]`
+  - Returns list of available monitoring service types
+  - **Returns**: List with `['prometheus']`
+
+- `list_running_services() -> List[str]`
+  - Returns list of running monitor service IDs
+  - **Returns**: List of service IDs
+
+- `start_monitor(recipe: dict) -> str`
+  - Starts a new Prometheus monitoring instance
+  - **Parameters**: `recipe` - Prometheus recipe configuration
+  - **Returns**: Service ID of the started monitor
+
+- `stop_monitor(service_id: str) -> bool`
+  - Stops a running monitor
+  - **Parameters**: `service_id` - Monitor service identifier
+  - **Returns**: True if successful
+
+- `get_monitor_status(service_id: str) -> dict`
+  - Gets detailed status of a monitor
+  - **Parameters**: `service_id` - Monitor service identifier
+  - **Returns**: Dictionary with status details (job_id, status, nodes, etc.)
+
+- `get_monitor_endpoint(service_id: str) -> str`
+  - Gets the Prometheus HTTP endpoint URL
+  - **Parameters**: `service_id` - Monitor service identifier
+  - **Returns**: Endpoint URL (e.g., `http://mel2073:9090`) or None
+
+- `list_running_monitors() -> List[dict]`
+  - Lists all running Prometheus monitors with details
+  - **Returns**: List of dictionaries with monitor information
+
+#### Querying Metrics
+
+To query metrics from Prometheus, use SSH to execute curl commands on the cluster:
+
+```python
+# Get service host
+host = orchestrator.servers.get_service_host(service_id)
+
+if host:
+    # Build curl command
+    endpoint = f"http://{host}:9090"
+    query = "up"
+    curl_cmd = f"curl -s '{endpoint}/api/v1/query?query={query}'"
+    
+    # Execute via SSH
+    exit_code, stdout, stderr = orchestrator.ssh_client.execute_command(curl_cmd)
+    
+    if exit_code == 0:
+        import json
+        result = json.loads(stdout)
+        print(result)
+```
+
+**Note**: Queries must execute via SSH on the cluster due to internal DNS resolution.
+
 ### SSHClient
 
 Handles secure communication with the HPC cluster.
@@ -429,14 +494,41 @@ python main.py --status
 # List available services
 python main.py --list-services
 
+# Stop specific service
+python main.py --stop-service <SERVICE_ID>
+
 # Stop all services
 python main.py --stop-all-services
+
+# Get service endpoint
+python main.py --service-endpoint <SERVICE_ID>
 
 # Debug services
 python main.py --debug-services
 
 # Clear state
 python main.py --clear-state
+```
+
+### Monitoring Commands
+
+```bash
+# Start Prometheus monitor
+python main.py --recipe recipes/services/prometheus.yaml
+
+# List available monitors
+python main.py --list-monitors
+
+# Check monitor status
+python main.py --monitor-status <SERVICE_ID>
+
+# Query metrics from a service (executed via SSH on cluster)
+python main.py --query-service-metrics <SERVICE_ID> "<PROMQL_QUERY>"
+
+# Examples:
+python main.py --query-service-metrics 6355d49f "up"
+python main.py --query-service-metrics 6355d49f "rate(process_cpu_seconds_total[5m])"
+python main.py --query-service-metrics 6355d49f "process_resident_memory_bytes"
 ```
 
 ### Environment Variables

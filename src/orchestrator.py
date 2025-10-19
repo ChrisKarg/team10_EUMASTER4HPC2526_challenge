@@ -11,6 +11,7 @@ from pathlib import Path
 from ssh_client import SSHClient
 from servers import ServersModule
 from clients import ClientsModule
+from monitors import MonitorsModule
 
 class BenchmarkOrchestrator:
     """Central orchestration engine for benchmark experiments"""
@@ -41,6 +42,7 @@ class BenchmarkOrchestrator:
         # Initialize modules
         self.servers = ServersModule(self.config, self.ssh_client)
         self.clients = ClientsModule(self.config, self.ssh_client)
+        self.monitors = MonitorsModule(self.config, self.ssh_client)
         
         # Track active sessions
         self._active_sessions: Dict[str, Dict[str, Any]] = {}
@@ -388,12 +390,17 @@ class BenchmarkOrchestrator:
         }
     
     def show_monitors_status(self) -> dict:
-        """Query active monitoring instances (placeholder)"""
-        # TODO: Implement when monitors module is added
+        """Query active monitoring instances"""
+        self.monitors.cleanup_completed_monitors()
+        
+        monitors_status = {}
+        
+        for monitor_id in self.monitors.list_running_monitors():
+            monitors_status[monitor_id] = self.monitors.check_monitor_status(monitor_id)
+        
         return {
-            'total_monitors': 0,
-            'monitors': {},
-            'note': 'Monitoring module not yet implemented'
+            'total_monitors': len(monitors_status),
+            'monitors': monitors_status
         }
     
     def show_logs_status(self) -> dict:

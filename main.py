@@ -67,6 +67,20 @@ def main():
                        help='List all services (tracked and SLURM-only)')
     parser.add_argument('--list-running-services', action='store_true',
                        help='List only running services with their IDs')
+    parser.add_argument('--list-monitors', action='store_true',
+                       help='List running monitors')
+    parser.add_argument('--monitor-status', type=str, metavar='MONITOR_ID',
+                       help='Check status of a specific monitor')
+    parser.add_argument('--stop-monitor', type=str, metavar='MONITOR_ID',
+                       help='Stop a running monitor')
+    parser.add_argument('--query-metrics', type=str, nargs=2, metavar=('MONITOR_ID', 'QUERY'),
+                       help='Query Prometheus metrics (e.g., --query-metrics mon123 "up")')
+    parser.add_argument('--query-service-metrics', type=str, nargs=2, metavar=('SERVICE_ID', 'QUERY'),
+                       help='Query Prometheus metrics from a service (e.g., --query-service-metrics svc123 "up")')
+    parser.add_argument('--monitor-endpoint', type=str, metavar='MONITOR_ID',
+                       help='Get Prometheus endpoint URL for a monitor')
+    parser.add_argument('--service-endpoint', type=str, metavar='SERVICE_ID',
+                       help='Get endpoint URL for a service (including Prometheus)')
     parser.add_argument('--verbose', '-v', action='store_true',
                        help='Enable verbose logging')
     parser.add_argument('--setup', action='store_true',
@@ -288,6 +302,177 @@ def main():
                 print(f"\nTo target a service, use:")
                 print(f"  python main.py --recipe recipes/clients/ollama_benchmark.yaml --target-service <SERVICE_ID>")
         
+        elif args.list_monitors:
+            print("Running monitors:")
+            running_monitors = interface.monitors.list_running_monitors()
+            
+            if not running_monitors:
+                print("  No running monitors found")
+                print("\nTo start a monitor, use:")
+                print("  python main.py --recipe recipes/services/prometheus.yaml")
+            else:
+                print(f"\nFound {len(running_monitors)} running monitor(s):")
+                for monitor_id in running_monitors:
+                    status = interface.monitors.check_monitor_status(monitor_id)
+                    endpoint = interface.monitors.get_monitor_endpoint(monitor_id)
+                    print(f"  📊 {monitor_id}")
+                    print(f"     Status: {status['status']}")
+                    print(f"     Job ID: {status.get('job_id', 'N/A')}")
+                    if endpoint:
+                        print(f"     Endpoint: {endpoint}")
+                print(f"\nTo query metrics, use:")
+                print(f"  python main.py --query-metrics <MONITOR_ID> \"up\"")
+        
+        elif args.monitor_status:
+            monitor_id = args.monitor_status
+            print(f"Monitor status: {monitor_id}")
+            
+            status = interface.monitors.check_monitor_status(monitor_id)
+            
+            if 'error' in status:
+                print(f"❌ Error: {status['error']}")
+                return 1
+            
+            print(f"  Monitor ID: {status['monitor_id']}")
+            print(f"  Status: {status['status']}")
+            print(f"  Job ID: {status.get('job_id', 'N/A')}")
+            
+            if status.get('nodes'):
+                print(f"  Nodes: {', '.join(status['nodes'])}")
+            
+            if status.get('submitted_at'):
+                from datetime import datetime
+                submit_time = datetime.fromtimestamp(status['submitted_at'])
+                print(f"  Submitted: {submit_time}")
+            
+            # Try to get endpoint
+            endpoint = interface.monitors.get_monitor_endpoint(monitor_id)
+            if endpoint:
+                print(f"  Endpoint: {endpoint}")
+                print(f"  UI: {endpoint}/graph")
+        
+        elif args.stop_monitor:
+            monitor_id = args.stop_monitor
+            print(f"Stopping monitor: {monitor_id}")
+            
+            success = interface.monitors.stop_monitor(monitor_id)
+            if success:
+                print(f"✅ Monitor {monitor_id} stopped successfully")
+            else:
+                print(f"❌ Failed to stop monitor {monitor_id}")
+                return 1
+        
+        elif args.query_metrics:
+            monitor_id, query = args.query_metrics
+            print(f"Querying metrics from monitor {monitor_id}")
+            print(f"Query: {query}")
+            
+            result = interface.monitors.query_metrics(monitor_id, query)
+            
+            if 'error' in result:
+                print(f"❌ Error: {result['error']}")
+                return 1
+            
+            # Pretty print the result
+            import json
+            print("\nResult:")
+            print(json.dumps(result, indent=2))
+        
+        elif args.query_service_metrics:
+            service_id, query = args.query_service_metrics
+            print(f"Querying metrics from service {service_id}")
+            print(f"Query: {query}")
+            
+            # Get service host
+            host = interface.servers.get_service_host(service_id)
+            
+            if not host:
+                print(f"❌ Could not find host for service {service_id}")
+                print("Make sure the service is running and has been assigned to a node.")
+                return 1
+            
+            # Build Prometheus endpoint (assuming port 9090 for Prometheus)
+            endpoint = f"http://{host}:9090"
+            print(f"Using endpoint: {endpoint}")
+            
+            # Query Prometheus via SSH (since we can't reach internal cluster hostnames from local machine)
+            try:
+                import json
+                
+                # Build the curl command to run on the cluster
+                query_url = f"{endpoint}/api/v1/query"
+                curl_cmd = f"curl -s '{query_url}?query={query}'"
+                
+                print(f"Executing query via SSH...")
+                exit_code, stdout, stderr = interface.ssh_client.execute_command(curl_cmd)
+                
+                if exit_code != 0:
+                    print(f"❌ Query failed with exit code {exit_code}")
+                    if stderr:
+                        print(f"Error: {stderr}")
+                    return 1
+                
+                if not stdout or not stdout.strip():
+                    print(f"❌ No response from Prometheus")
+                    return 1
+                
+                # Parse and display the result
+                try:
+                    result = json.loads(stdout)
+                    print("\nResult:")
+                    print(json.dumps(result, indent=2))
+                except json.JSONDecodeError as e:
+                    print(f"❌ Invalid JSON response: {e}")
+                    print(f"Raw response: {stdout[:500]}")
+                    return 1
+                
+            except Exception as e:
+                print(f"❌ Error querying Prometheus: {e}")
+                return 1
+        
+        elif args.monitor_endpoint:
+            monitor_id = args.monitor_endpoint
+            
+            endpoint = interface.monitors.get_monitor_endpoint(monitor_id)
+            
+            if endpoint:
+                print(f"Prometheus endpoint for {monitor_id}:")
+                print(f"  API: {endpoint}")
+                print(f"  UI: {endpoint}/graph")
+                print(f"  Targets: {endpoint}/targets")
+            else:
+                print(f"❌ Could not get endpoint for monitor {monitor_id}")
+                print("The monitor may not be running or not yet assigned to a node.")
+                return 1
+        
+        elif args.service_endpoint:
+            service_id = args.service_endpoint
+            
+            host = interface.servers.get_service_host(service_id)
+            
+            if not host:
+                print(f"❌ Could not get host for service {service_id}")
+                print("The service may not be running or not yet assigned to a node.")
+                return 1
+            
+            # For Prometheus services, assume port 9090
+            # For other services, you might need different logic
+            service_name = service_id
+            if 'prometheus' in service_name.lower():
+                port = 9090
+                endpoint = f"http://{host}:{port}"
+                print(f"Prometheus endpoint for service {service_id}:")
+                print(f"  Host: {host}")
+                print(f"  API: {endpoint}")
+                print(f"  UI: {endpoint}/graph")
+                print(f"  Targets: {endpoint}/targets")
+                print(f"\nQuery metrics with:")
+                print(f"  python main.py --query-service-metrics {service_id} \"up\"")
+            else:
+                print(f"Service endpoint for {service_id}:")
+                print(f"  Host: {host}")
+                print(f"\n(Port detection not implemented for non-Prometheus services)")
+        
         elif args.recipe:
             if not os.path.exists(args.recipe):
                 logger.error(f"Recipe file not found: {args.recipe}")
@@ -388,11 +573,14 @@ def main():
             print("  6. Show running sessions")
             print("  7. Debug services")
             print("  8. List all services")
-            print("  9. Exit")
+            print("  9. List monitors")
+            print("  10. Monitor status")
+            print("  11. Query metrics")
+            print("  12. Exit")
             
             while True:
                 try:
-                    choice = input("\nEnter command (1-9): ").strip()
+                    choice = input("\nEnter command (1-12): ").strip()
                     if choice == '1':
                         services = interface.servers.list_available_services()
                         print("Available Services:", services)
@@ -510,9 +698,88 @@ def main():
                                 type_marker = "📊" if service['type'] == 'tracked' else "🔧"
                                 print(f"  {type_marker} {service['service_id']} (Job: {service['job_id']}) - {service['status']}")
                     elif choice == '9':
+                        # List monitors
+                        running_monitors = interface.monitors.list_running_monitors()
+                        
+                        if not running_monitors:
+                            print("No running monitors")
+                        else:
+                            print(f"Running monitors ({len(running_monitors)}):")
+                            for monitor_id in running_monitors:
+                                status = interface.monitors.check_monitor_status(monitor_id)
+                                endpoint = interface.monitors.get_monitor_endpoint(monitor_id)
+                                print(f"  📊 {monitor_id} - {status['status']}")
+                                if endpoint:
+                                    print(f"     {endpoint}")
+                    elif choice == '10':
+                        # Monitor status
+                        running_monitors = interface.monitors.list_running_monitors()
+                        
+                        if not running_monitors:
+                            print("No running monitors")
+                            continue
+                        
+                        print("Available monitors:")
+                        for i, monitor_id in enumerate(running_monitors, 1):
+                            print(f"  {i}. {monitor_id}")
+                        
+                        try:
+                            choice_num = int(input("Enter monitor number (or 0 to cancel): ").strip())
+                            if choice_num == 0:
+                                continue
+                            elif 1 <= choice_num <= len(running_monitors):
+                                monitor_id = running_monitors[choice_num - 1]
+                                status = interface.monitors.check_monitor_status(monitor_id)
+                                
+                                print(f"\nMonitor: {monitor_id}")
+                                print(f"  Status: {status['status']}")
+                                print(f"  Job ID: {status.get('job_id', 'N/A')}")
+                                
+                                endpoint = interface.monitors.get_monitor_endpoint(monitor_id)
+                                if endpoint:
+                                    print(f"  Endpoint: {endpoint}")
+                                    print(f"  UI: {endpoint}/graph")
+                            else:
+                                print("Invalid monitor number")
+                        except ValueError:
+                            print("Please enter a valid number")
+                    elif choice == '11':
+                        # Query metrics
+                        running_monitors = interface.monitors.list_running_monitors()
+                        
+                        if not running_monitors:
+                            print("No running monitors")
+                            continue
+                        
+                        print("Available monitors:")
+                        for i, monitor_id in enumerate(running_monitors, 1):
+                            print(f"  {i}. {monitor_id}")
+                        
+                        try:
+                            choice_num = int(input("Enter monitor number (or 0 to cancel): ").strip())
+                            if choice_num == 0:
+                                continue
+                            elif 1 <= choice_num <= len(running_monitors):
+                                monitor_id = running_monitors[choice_num - 1]
+                                query = input("Enter PromQL query (e.g., 'up'): ").strip()
+                                
+                                if query:
+                                    result = interface.monitors.query_metrics(monitor_id, query)
+                                    
+                                    if 'error' in result:
+                                        print(f"❌ Error: {result['error']}")
+                                    else:
+                                        import json
+                                        print("\nResult:")
+                                        print(json.dumps(result, indent=2))
+                            else:
+                                print("Invalid monitor number")
+                        except ValueError:
+                            print("Please enter a valid number")
+                    elif choice == '12':
                         break
                     else:
-                        print("Invalid choice. Please enter 1-9.")
+                        print("Invalid choice. Please enter 1-12.")
                 except KeyboardInterrupt:
                     print("\nExiting...")
                     break

@@ -6,10 +6,6 @@ The HPC Benchmarking Orchestrator is a sophisticated system designed to manage c
 
 The architecture is built around a **Job-based inheritance hierarchy** with a **factory pattern** for creating service and client instances, providing a clean separation of concerns and extensible design.
 
-<span style="background-color: #fff9b1; font-size: 1.35em; font-weight: bold;">
-TODO: Monitor and Logs are not taken into account for now, and CLI interface is though as a minimal interface to run tests
-</span>
-
 ## System Architecture
 
 ### High-Level Architecture
@@ -19,12 +15,15 @@ graph TB
     CLI[CLI Interface] --> BO[BenchmarkOrchestrator]
     BO --> SM[ServersModule]
     BO --> CM[ClientsModule]
+    BO --> MM[MonitorsModule]
     BO --> SSH[SSHClient]
     
     SM --> YAML1[Service Recipes]
     SM --> JF[JobFactory]
     CM --> JF
     CM --> YAML2[Client Recipes]
+    MM --> JF
+    MM --> YAML3[Monitor Recipes]
     SSH --> HPC[HPC Cluster/SLURM]
     
     JF --> SRV[Service Instances]
@@ -32,6 +31,9 @@ graph TB
     
     HPC --> CONT[Container Runtime]
     HPC --> JOBS[SLURM Jobs]
+    
+    MM --> PROM[Prometheus Service]
+    PROM --> METRICS[Metric Queries via SSH]
 ```
 
 ### Core Components
@@ -39,10 +41,11 @@ graph TB
 1. **BenchmarkOrchestrator**: Central orchestration engine
 2. **ServersModule**: Manages service deployments using JobFactory
 3. **ClientsModule**: Manages benchmark client workloads using JobFactory
-4. **JobFactory**: Creates Service/Client instances based on recipe type
-5. **SSHClient**: Handles remote HPC communication
-6. **Job Instances**: Each job generates its own SLURM batch scripts
-7. **BaseModule**: Abstract base class for orchestrator modules
+4. **MonitorsModule**: Manages Prometheus monitoring instances for metrics collection
+5. **JobFactory**: Creates Service/Client/Monitor instances based on recipe type
+6. **SSHClient**: Handles remote HPC communication and metric queries
+7. **Job Instances**: Each job generates its own SLURM batch scripts
+8. **BaseModule**: Abstract base class for orchestrator modules
 
 ## Class Diagram
 
@@ -102,6 +105,18 @@ classDiagram
         +_get_docker_source() str
     }
     
+    class PrometheusService {
+        +port: int
+        +config_file: str
+        +from_recipe(recipe: dict, config: dict) PrometheusService
+        +generate_script_commands() list
+        +get_container_command() str
+        +get_health_check_commands() list
+        +get_service_setup_commands() list
+        +_resolve_container_path() str
+        +_get_docker_source() str
+    }
+    
     class OllamaClient {
         +from_recipe(recipe: dict, config: dict) OllamaClient
         +generate_script_commands() list
@@ -128,6 +143,7 @@ classDiagram
     Job <|-- Service
     Job <|-- Client
     Service <|-- OllamaService
+    Service <|-- PrometheusService
     Client <|-- OllamaClient
     JobFactory ..> Service : creates
     JobFactory ..> Client : creates
@@ -182,6 +198,7 @@ classDiagram
         +start_service(recipe: dict) str
         +stop_service(service_id: str) bool
         +check_service_status(service_id: str) dict
+        +get_service_host(service_id: str) str
         +cleanup_completed_services()
     }
     
@@ -197,6 +214,18 @@ classDiagram
         +stop_client(client_id: str) bool
         +check_client_status(client_id: str) dict
         +cleanup_completed_clients()
+    }
+    
+    %% Monitoring Management
+    class MonitorsModule {
+        <<Module>>
+        +list_available_services() List[str]
+        +list_running_services() List[str]
+        +start_monitor(recipe: dict) str
+        +stop_monitor(monitor_id: str) bool
+        +get_monitor_status(service_id: str) dict
+        +get_monitor_endpoint(service_id: str) str
+        +list_running_monitors() List[dict]
     }
     
     %% Infrastructure Layer
@@ -243,15 +272,18 @@ classDiagram
     %% Inheritance Relationships
     BaseModule <|-- ServersModule : inherits
     BaseModule <|-- ClientsModule : inherits
+    BaseModule <|-- MonitorsModule : inherits
     
     %% Composition Relationships
     BenchmarkOrchestrator *-- ServersModule : contains
     BenchmarkOrchestrator *-- ClientsModule : contains
+    BenchmarkOrchestrator *-- MonitorsModule : contains
     BenchmarkOrchestrator *-- SSHClient : contains
     
     %% Dependency Relationships
     BaseModule ..> JobInfo : manages
     JobInfo ..> ServiceStatus : has status
+    MonitorsModule ..> ServersModule : delegates to
 ```
 
 ### Simplified Component View
@@ -262,6 +294,7 @@ graph TD
     BO[🎯 BenchmarkOrchestrator<br/>Central Orchestration Engine]
     SM[🖥️ ServersModule<br/>Service Management]
     CM[📊 ClientsModule<br/>Benchmark Client Management]
+    MM[📈 MonitorsModule<br/>Prometheus Monitoring]
     SSH[🔐 SSHClient<br/>HPC Communication]
     JF[🏭 JobFactory<br/>Service/Client Factory]
     
@@ -270,6 +303,7 @@ graph TD
     SRV[🚀 Service<br/>Service Jobs]
     CLT[🎯 Client<br/>Client Jobs]
     OSRV[🤖 OllamaService<br/>Concrete Service]
+    PSRV[📊 PrometheusService<br/>Monitoring Service]
     OCLT[🧪 OllamaClient<br/>Concrete Client]
     
     %% Data Components
@@ -278,15 +312,19 @@ graph TD
     %% Relationships
     BO --> SM
     BO --> CM
+    BO --> MM
     BO --> SSH
     SM --> JF
     CM --> JF
+    MM --> SM
+    MM --> SSH
     SM --> JI
     CM --> JI
     
     JOB --> SRV
     JOB --> CLT
     SRV --> OSRV
+    SRV --> PSRV
     CLT --> OCLT
     JF --> SRV
     JF --> CLT
@@ -303,10 +341,10 @@ graph TD
     classDef external fill:#ffebee,stroke:#c62828,stroke-width:2px
     
     class BO orchestrator
-    class SM,CM module
+    class SM,CM,MM module
     class SSH infrastructure
     class JF factory
-    class JOB,SRV,CLT,OSRV,OCLT job
+    class JOB,SRV,CLT,OSRV,PSRV,OCLT job
     class JI config
     class HPC external
 ```

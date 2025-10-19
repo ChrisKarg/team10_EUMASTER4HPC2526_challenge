@@ -156,6 +156,35 @@ class ServersModule(BaseModule):
         
         if service_id not in self._running_instances:
             self.logger.warning(f"Service {service_id} not found in running instances")
+            
+            # Try to find in SLURM directly
+            if self.ssh_client:
+                self.logger.info(f"Attempting to find service {service_id} in SLURM")
+                try:
+                    # Search for jobs that match the service_id pattern
+                    # Service names are typically: servicename_serviceid
+                    cmd = f"squeue -u $USER --format='%i,%j,%N' --noheader | grep '{service_id}'"
+                    self.logger.debug(f"Running SLURM search command: {cmd}")
+                    exit_code, stdout, stderr = self.ssh_client.execute_command(cmd)
+                    
+                    if exit_code == 0 and stdout.strip():
+                        # Parse the output: job_id,job_name,nodes
+                        line = stdout.strip().split('\n')[0]  # Get first match
+                        parts = line.split(',')
+                        if len(parts) >= 3:
+                            job_id = parts[0].strip()
+                            job_name = parts[1].strip()
+                            nodes = parts[2].strip()
+                            
+                            if nodes and nodes != '(null)':
+                                self.logger.info(f"Found service {service_id} in SLURM: job {job_id} on {nodes}")
+                                return nodes
+                            else:
+                                self.logger.warning(f"Service {service_id} found but not yet assigned to a node")
+                                return None
+                except Exception as e:
+                    self.logger.error(f"Error searching SLURM for service {service_id}: {e}")
+            
             return None
         
         job_info = self._running_instances[service_id]

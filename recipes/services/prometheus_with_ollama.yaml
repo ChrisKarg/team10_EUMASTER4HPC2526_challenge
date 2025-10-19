@@ -1,0 +1,32 @@
+# Prometheus Monitoring Service - Configured to Monitor Ollama
+# This is a complete example showing how to monitor a running Ollama service
+
+service:
+  name: prometheus
+  
+  # Services to monitor
+  # IMPORTANT: Replace "ollama_abc123" with the actual service_id from: python main.py --status
+  monitoring_targets:
+    - service_id: "ollama_ad73b280"     # Replace with your Ollama service ID
+      job_name: "ollama-service"      # How it appears in Prometheus
+      port: 11434                     # Ollama's default port
+  
+  # Container configuration
+  container:
+    docker_source: docker://prom/prometheus:latest
+    image_path: $HOME/containers/prometheus.sif
+  
+  # Resource requirements
+  resources:
+    mem: 4G
+    cpus_per_task: 2
+    time: "02:00:00"
+  
+  # Environment variables
+  environment:
+    PROMETHEUS_RETENTION_TIME: "15d"
+    PROMETHEUS_STORAGE_PATH: "/prometheus"
+  
+  # Exposed ports
+  ports:
+    - 9090

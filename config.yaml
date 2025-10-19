@@ -21,15 +21,17 @@ slurm:
 # Directory paths
 services_dir: "recipes/services"
 clients_dir: "recipes/clients"
+monitors_dir: "recipes/monitors"
 scripts_dir: "scripts"
 results_dir: "results"
 logs_dir: "logs"
+metrics_dir: "metrics"
 
-# Monitoring settings (placeholder for future implementation)
+# Monitoring settings
 monitoring:
-  enabled: false
-  prometheus_endpoint: "http://localhost:9090"
-  grafana_endpoint: "http://localhost:3000"
+  enabled: true
+  prometheus_port: 9090
+  default_scrape_interval: "15s"
 
 # Logging settings
 logging:

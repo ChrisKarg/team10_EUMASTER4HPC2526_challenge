@@ -40,6 +40,7 @@ from .base import Job, Service, Client, JobFactory
 
 # Import specific implementations (this triggers registration)
 from .ollama import OllamaService, OllamaClient
+from .prometheus import PrometheusService
 
 # Make key classes available at package level
 __all__ = [
@@ -48,7 +49,8 @@ __all__ = [
     'Client',
     'JobFactory',
     'OllamaService',
-    'OllamaClient'
+    'OllamaClient',
+    'PrometheusService'
 ]
 
 # Verify registrations happened
