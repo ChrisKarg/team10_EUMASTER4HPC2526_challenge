@@ -1,0 +1,45 @@
+# Chroma Vector Database Service Configuration
+service:
+  name: chroma
+  description: Chroma vector database service for embeddings and similarity search
+  container_image: chroma_latest.sif
+  command: chroma
+  args: ["run", "--host", "0.0.0.0", "--port", "8000"]
+
+  # Container configuration
+  container:
+    # Docker source for automatic building if image doesn't exist
+    docker_source: "docker://chromadb/chroma:latest"
+    # Path where container image is stored/should be downloaded
+    image_path: "$HOME/containers/chroma_latest.sif"
+
+  # Resource requirements (SLURM job configuration)
+  resources:
+    time: "01:00:00"        # 1 hour runtime
+    qos: default
+    partition: cpu           # Chroma typically doesn't require GPU
+    nodes: 1
+    ntasks: 1
+    ntasks_per_node: 1
+    mem: "8GB"              # Memory for vector storage
+
+  # Environment variables for Chroma configuration
+  environment:
+    CHROMA_HOST: "0.0.0.0"
+    CHROMA_PORT: "8000"
+    CHROMA_SERVER_AUTH_PROVIDER: "chromadb.auth.token.TokenAuthServerProvider"
+    ALLOW_RESET: "true"     # Allow database reset (useful for testing)
+    IS_PERSISTENT: "true"   # Enable persistence
+    PERSIST_DIRECTORY: "/chroma/data"  # Data directory inside container
+    ANONYMIZED_TELEMETRY: "false"      # Disable telemetry
+    
+  # Exposed ports (accessible from other containers on same node)
+  ports:
+    - 8000
+
+  # Health check configuration
+  health_check:
+    endpoint: "http://localhost:8000/api/v1/heartbeat"
+    timeout: 30
+    retries: 5
+    interval: 10
