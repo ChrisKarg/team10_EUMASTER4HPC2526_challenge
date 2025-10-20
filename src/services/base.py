@@ -674,7 +674,7 @@ class Client(Job):
                 python_cmd += f" --{cli_key}={value}"
         
         # Run inside container - simplified without complex dependency handling
-        cmd_parts.extend(["bash", "-c", f'"pip install -q requests && {python_cmd}"'])
+        cmd_parts.extend(["bash", "-c", f'"pip install -q requests mysql-connector-python && {python_cmd}"'])
         
         return " ".join(cmd_parts)
     
@@ -761,24 +761,61 @@ class Client(Job):
             container_dir = '/'.join(container_path.split('/')[:-1])
             if container_dir:
                 commands.append(f"mkdir -p {container_dir}")
-            
-            commands.extend([
-                "# Client container management",
-                f"if [ ! -f \"{container_path}\" ]; then",
-                f"    echo \"Client container {container_path} not found, building from {docker_source}...\"",
-                f"    echo \"Starting client container build at $(date)\"",
-                f"    apptainer build {container_path} {docker_source}",
-                f"    if [ $? -eq 0 ]; then",
-                f"        echo \"Client container built successfully at $(date)\"",
-                f"    else",
-                f"        echo \"Client container build failed at $(date)\"",
-                f"        exit 1",
-                f"    fi",
-                "else",
-                f"    echo \"Client container {container_path} already exists\"",
-                "fi",
-                ""
-            ])
+
+            # If the recipe provides explicit build_commands, create a Singularity
+            # definition file on the remote host and build the SIF from it. This
+            # bakes packages into the container image instead of trying to pip
+            # install at runtime.
+            build_cmds = self.container.get('build_commands') or []
+            if build_cmds:
+                # Normalize docker source (strip docker:// prefix if present)
+                from_image = docker_source
+                if from_image.startswith('docker://'):
+                    from_image = from_image.replace('docker://', '')
+
+                def_path = f"/tmp/singularity_{int(__import__('time').time())}.def"
+
+                commands.append("# Client container management (Singularity definition build)")
+                commands.append(f"cat > {def_path} <<'EOF'")
+                commands.append(f"Bootstrap: docker")
+                commands.append(f"From: {from_image}")
+                commands.append("")
+                commands.append("%post")
+                # Add each build command under %post
+                for c in build_cmds:
+                    commands.append(f"    {c}")
+                commands.append("")
+                commands.append("%labels")
+                commands.append(f"    Author {self.get_target_service_name()}_client")
+                commands.append("EOF")
+                commands.append(f"echo \"Starting client container build from {def_path} at $(date)\"")
+                commands.append(f"apptainer build --force {container_path} {def_path}")
+                commands.append("if [ $? -eq 0 ]; then")
+                commands.append("    echo \"Client container built successfully\"")
+                commands.append("else")
+                commands.append("    echo \"Client container build failed\"")
+                commands.append("    exit 1")
+                commands.append("fi")
+                commands.append("")
+            else:
+                # Fallback: simple build from docker source
+                commands.extend([
+                    "# Client container management",
+                    f"if [ ! -f \"{container_path}\" ]; then",
+                    f"    echo \"Client container {container_path} not found, building from {docker_source}...\"",
+                    f"    echo \"Starting client container build at $(date)\"",
+                    f"    apptainer build {container_path} {docker_source}",
+                    f"    if [ $? -eq 0 ]; then",
+                    f"        echo \"Client container built successfully at $(date)\"",
+                    f"    else",
+                    f"        echo \"Client container build failed at $(date)\"",
+                    f"        exit 1",
+                    f"    fi",
+                    "else",
+                    f"    echo \"Client container {container_path} already exists\"",
+                    "fi",
+                    ""
+                ])
         
         return commands
     
