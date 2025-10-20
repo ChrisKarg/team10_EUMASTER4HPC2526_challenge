@@ -145,8 +145,12 @@ Note the node name (`node-01` in this example) where your service is running.
 ### Step 3: Run the Benchmark Client
 
 ```bash
-# Run the benchmark client against the service
+# Run the benchmark client against the service by using the target endpoint
 python main.py --recipe recipes/clients/ollama_benchmark.yaml --target-endpoint http://node-01:11434
+
+# or the service id
+
+python main.py --recipe recipes/clients/ollama_benchmark.yaml --target-service 98765
 ```
 
 **Expected output:**
