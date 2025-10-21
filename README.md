@@ -72,17 +72,28 @@ python main.py --status
 ### Command Line Interface
 
 ```bash
-# List available services
+# List available services and clients
 python main.py --list-services
+python main.py --list-clients
+
+# Check status of running jobs
+python main.py --status
 
 # Run a specific recipe
 python main.py --recipe recipes/ollama_complete.yaml
+
+# Run client against a service
+python main.py --recipe recipes/clients/ollama_benchmark.yaml --target-service <SERVICE_JOB_ID>
+
+# Stop a running service
+python main.py --stop-service <JOB_ID>
+python main.py --stop-all-services
 
 # Interactive mode
 python main.py
 
 # Verbose logging
-python main.py --verbose --recipe recipes/postgresql_complete.yaml
+python main.py --verbose --recipe recipes/services/ollama.yaml
 ```
 
 ### Programmatic Usage
@@ -183,12 +194,20 @@ Clients:
 
 ### Step 5: View Results
 
-Once the client job completes, check the results:
+Once the client job completes, check the results in the SLURM output file:
 
 ```bash
-# The benchmark results will be saved in the job's working directory
-# Check SLURM output files or the specified output location
+# SSH to the HPC cluster
+ssh meluxina
+
+# View the benchmark results (formatted output in SLURM logs)
+cat slurm-<CLIENT_JOB_ID>.out
+
+# Or view detailed JSON results (if saved)
+cat /tmp/ollama_benchmark_results.json
 ```
+
+The SLURM log file contains formatted output with all benchmark results, making it easy to review performance metrics.
 
 ### Alternative: Using Service ID
 
@@ -221,30 +240,70 @@ This will show:
 - Container command with endpoint arguments
 - Detailed logging throughout the process
 
+### Stopping Services
+
+To stop a running service:
+
+```bash
+# Stop a specific service by job ID
+python main.py --stop-service <JOB_ID>
+
+# Stop all running services
+python main.py --stop-all-services
+
+# Example: Stop service with job ID 98765
+python main.py --stop-service 98765
+```
+
+**Expected output:**
+```
+Successfully cancelled SLURM job: 98765
+Service 98765 stopped.
+```
+
+**Note**: Stopping a service will cancel its SLURM job and free up the allocated resources. Any clients connected to that service will lose connectivity.
+
 ## 📁 Project Structure
 
 ```
 team10_EUMASTER4HPC2526_challenge/
-├── main.py                 # CLI entry point
-├── config.yaml            # Configuration file
-├── requirements.txt        # Python dependencies
-├── src/                    # Core modules
-│   ├── orchestrator.py     # Main orchestrator engine
-│   ├── servers.py          # Services management
-│   ├── clients.py          # Benchmark clients
-│   ├── ssh_client.py       # HPC SSH operations
-│   ├── script_generator.py # SLURM script generation
-│   └── base.py             # Base classes and enums
-├── recipes/                # YAML recipe definitions
-│   ├── services/           # Service templates
-│   │   └── ollama.yaml     # Ollama LLM service
-│   └── clients/            # Client templates
-│       └── ollama_benchmark.yaml
-├── benchmark_scripts/      # Benchmark implementation scripts
-│   └── ollama_benchmark.py # Ollama benchmark client
-├── tests/                  # Test suite
-├── docs/                   # Documentation
-└── examples/              # Usage examples
+├── main.py                      # CLI entry point
+├── config.yaml                  # Configuration file
+├── requirements.txt             # Python dependencies
+├── src/                         # Core modules
+│   ├── orchestrator.py          # Main orchestrator engine
+│   ├── servers.py               # Services management
+│   ├── clients.py               # Benchmark clients
+│   ├── ssh_client.py            # HPC SSH operations
+│   ├── base.py                  # Base classes and enums
+│   └── services/                # Service implementations
+│       ├── __init__.py          # Service registry
+│       ├── ollama.py            # Ollama service/client
+│       ├── chroma.py            # Chroma service/client
+│       ├── redis.py             # Redis service/client
+│       └── prometheus.py        # Prometheus monitoring
+├── recipes/                     # YAML recipe definitions
+│   ├── services/                # Service templates
+│   │   ├── ollama.yaml          # Ollama LLM service
+│   │   ├── chroma.yaml          # Chroma vector DB
+│   │   ├── redis.yaml           # Redis in-memory DB
+│   │   └── prometheus_with_ollama.yaml
+│   └── clients/                 # Client templates
+│       ├── ollama_benchmark.yaml
+│       ├── chroma_benchmark.yaml
+│       └── redis_benchmark.yaml
+├── benchmark_scripts/           # Benchmark implementation scripts
+│   ├── ollama_benchmark.py      # Ollama benchmark client
+│   ├── chroma_benchmark.py      # Chroma benchmark client
+│   └── redis_benchmark.py       # Redis benchmark client
+├── tests/                       # Test suite
+├── docs/                        # Documentation
+│   ├── API_DOCUMENTATION.md
+│   ├── ARCHITECTURE_DOCUMENTATION.md
+│   ├── CHROMA_INTEGRATION_GUIDE.md
+│   ├── REDIS_INTEGRATION_GUIDE.md    # Redis detailed guide
+│   └── REDIS_QUICK_REFERENCE.md      # Redis quick reference
+└── examples/                    # Usage examples
 ```
 
 ## 🔧 Configuration
@@ -367,6 +426,13 @@ client:
 - **Ports**: 8000
 - **Features**: Vector similarity search, embeddings
 
+### Redis (In-Memory Database)
+- **Container**: `redis_latest.sif`
+- **Ports**: 6379
+- **Resources**: CPU-focused
+- **Features**: Key-value storage, caching, persistence (AOF/RDB)
+- **Documentation**: [Redis Integration Guide](docs/REDIS_INTEGRATION_GUIDE.md), [Quick Reference](docs/REDIS_QUICK_REFERENCE.md)
+
 ## 🧪 Benchmark Clients
 
 ### Ollama Benchmark
@@ -384,9 +450,76 @@ client:
 - **Parameters**: Vector dimensions, collection size
 - **Workloads**: Similarity search, bulk operations
 
+### Redis Benchmark
+- **Metrics**: Operations per second (SET/GET/DEL), latency distribution, memory usage
+- **Parameters**: Operations count, key/value sizes, persistence testing
+- **Workloads**: Write-heavy, read-heavy, mixed operations
+- **Output**: JSON results with detailed statistics
+
+## 🎛️ Service Management
+
+### Starting Services
+
+```bash
+# Start a service using a recipe
+python main.py --recipe recipes/services/ollama.yaml
+python main.py --recipe recipes/services/redis.yaml
+python main.py --recipe recipes/services/chroma.yaml
+
+# Expected output: Service started: <SERVICE_ID>
+```
+
+### Monitoring Services
+
+```bash
+# Check status of all running jobs
+python main.py --status
+
+# List available service types
+python main.py --list-services
+
+# List available client types
+python main.py --list-clients
+```
+
+### Stopping Services
+
+```bash
+# Stop a specific service by job ID
+python main.py --stop-service <JOB_ID>
+
+# Stop all running services at once
+python main.py --stop-all-services
+```
+
+**Example workflow:**
+```bash
+# 1. Start Redis service
+python main.py --recipe recipes/services/redis.yaml
+# Output: Service started: 3656857
+
+# 2. Check it's running
+python main.py --status
+# Output: 3656857 | redis_abc123 | RUNNING | 0:01:30 | mel0182
+
+# 3. Stop the service when done
+python main.py --stop-service 3656857
+# Output: Successfully cancelled SLURM job: 3656857
+```
+
 ## 📊 Monitoring & Results
 
-### Status Monitoring
+### Status Monitoring (CLI)
+
+```bash
+# Check running services and clients
+python main.py --status
+
+# Verbose status with detailed information
+python main.py --verbose --status
+```
+
+### Status Monitoring (Programmatic)
 
 ```python
 # Check running services

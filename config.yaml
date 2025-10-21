@@ -3,7 +3,7 @@
 # HPC cluster connection settings
 hpc:
   hostname: "login.lxp.lu"  # MeluXina login node
-  username: "u103235"
+  username: "u103227"
   # password: "your_password"  # Use either password or key_filename
   key_filename: "~/.ssh/id_ed25519_mlux"  # Path to SSH private key
   port: 8822
