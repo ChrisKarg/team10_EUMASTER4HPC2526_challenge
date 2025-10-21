@@ -20,7 +20,7 @@ service:
   resources:
     mem: 4G
     cpus_per_task: 2
-    time: "02:00:00"
+    time: "00:30:00"
   
   # Environment variables
   environment:

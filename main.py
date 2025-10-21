@@ -73,8 +73,10 @@ def main():
                        help='Check status of a specific monitor')
     parser.add_argument('--stop-monitor', type=str, metavar='MONITOR_ID',
                        help='Stop a running monitor')
-    parser.add_argument('--query-metrics', type=str, nargs=2, metavar=('MONITOR_ID', 'QUERY'),
-                       help='Query Prometheus metrics (e.g., --query-metrics mon123 "up")')
+    parser.add_argument('--query-metrics', type=str, nargs=2, metavar=('SERVICE_ID', 'QUERY'),
+                       help='Query Prometheus metrics from a service or monitor (e.g., --query-metrics prometheus_4e29faf0 "up")')
+    parser.add_argument('--list-available-metrics', type=str, metavar='SERVICE_ID',
+                       help='List all available metric names from a Prometheus service (e.g., --list-available-metrics prometheus_4e29faf0)')
     parser.add_argument('--query-service-metrics', type=str, nargs=2, metavar=('SERVICE_ID', 'QUERY'),
                        help='Query Prometheus metrics from a service (e.g., --query-service-metrics svc123 "up")')
     parser.add_argument('--monitor-endpoint', type=str, metavar='MONITOR_ID',
@@ -303,25 +305,51 @@ def main():
                 print(f"  python main.py --recipe recipes/clients/ollama_benchmark.yaml --target-service <SERVICE_ID>")
         
         elif args.list_monitors:
-            print("Running monitors:")
+            print("Running monitors/Prometheus services:")
+            
+            # Check monitors module
             running_monitors = interface.monitors.list_running_monitors()
             
-            if not running_monitors:
+            # Check for Prometheus services
+            all_services = interface.servers.list_all_services()
+            prometheus_services = [s for s in all_services['all_services'] 
+                                  if 'prometheus' in s['service_id'].lower() and 
+                                  s['status'].upper() in ['RUNNING', 'PENDING']]
+            
+            if not running_monitors and not prometheus_services:
                 print("  No running monitors found")
                 print("\nTo start a monitor, use:")
-                print("  python main.py --recipe recipes/services/prometheus.yaml")
+                print("  python main.py --recipe recipes/services/prometheus.yaml --target-service <SERVICE_ID>")
             else:
-                print(f"\nFound {len(running_monitors)} running monitor(s):")
-                for monitor_id in running_monitors:
-                    status = interface.monitors.check_monitor_status(monitor_id)
-                    endpoint = interface.monitors.get_monitor_endpoint(monitor_id)
-                    print(f"  📊 {monitor_id}")
-                    print(f"     Status: {status['status']}")
-                    print(f"     Job ID: {status.get('job_id', 'N/A')}")
-                    if endpoint:
-                        print(f"     Endpoint: {endpoint}")
+                total_count = len(running_monitors) + len(prometheus_services)
+                print(f"\nFound {total_count} running Prometheus instance(s):")
+                
+                # Show monitors from monitors module
+                if running_monitors:
+                    print("\n  From Monitors Module:")
+                    for monitor_id in running_monitors:
+                        status = interface.monitors.check_monitor_status(monitor_id)
+                        endpoint = interface.monitors.get_monitor_endpoint(monitor_id)
+                        print(f"    📊 {monitor_id}")
+                        print(f"       Status: {status['status']}")
+                        print(f"       Job ID: {status.get('job_id', 'N/A')}")
+                        if endpoint:
+                            print(f"       Endpoint: {endpoint}")
+                
+                # Show Prometheus services
+                if prometheus_services:
+                    print("\n  From Services:")
+                    for service in prometheus_services:
+                        service_id = service['service_id']
+                        host = interface.servers.get_service_host(service_id)
+                        endpoint = f"http://{host}:9090" if host else "Not assigned"
+                        print(f"    📊 {service_id}")
+                        print(f"       Status: {service['status']}")
+                        print(f"       Job ID: {service['job_id']}")
+                        print(f"       Endpoint: {endpoint}")
+                
                 print(f"\nTo query metrics, use:")
-                print(f"  python main.py --query-metrics <MONITOR_ID> \"up\"")
+                print(f"  python main.py --query-metrics <SERVICE_ID> \"up\"")
         
         elif args.monitor_status:
             monitor_id = args.monitor_status
@@ -364,19 +392,188 @@ def main():
         
         elif args.query_metrics:
             monitor_id, query = args.query_metrics
-            print(f"Querying metrics from monitor {monitor_id}")
+            print(f"Querying metrics from monitor/service {monitor_id}")
             print(f"Query: {query}")
             
+            # Try to query from monitors module first
             result = interface.monitors.query_metrics(monitor_id, query)
             
-            if 'error' in result:
+            # If not found in monitors, try as a service (Prometheus started via --recipe)
+            if 'error' in result and 'not available' in result['error'].lower():
+                print(f"Not found in monitors, trying as a service...")
+                
+                # Get the host for this service/monitor
+                host = interface.servers.get_service_host(monitor_id)
+                
+                if not host:
+                    # Try searching by partial ID match
+                    all_services = interface.servers.list_all_services()
+                    matching_services = [s for s in all_services['all_services'] 
+                                       if monitor_id in s['service_id'] and 'prometheus' in s['service_id'].lower()]
+                    
+                    if matching_services:
+                        service_id = matching_services[0]['service_id']
+                        print(f"Found Prometheus service: {service_id}")
+                        host = interface.servers.get_service_host(service_id)
+                
+                if host:
+                    # Build Prometheus endpoint and query via SSH
+                    endpoint = f"http://{host}:9090"
+                    print(f"Using endpoint: {endpoint}")
+                    
+                    try:
+                        import json
+                        import urllib.parse
+                        
+                        # Build the curl command to run on the cluster
+                        query_url = f"{endpoint}/api/v1/query"
+                        # URL-encode the query parameter properly
+                        encoded_query = urllib.parse.quote(query)
+                        curl_cmd = f"curl -s '{query_url}?query={encoded_query}'"
+                        
+                        print(f"Executing query via SSH...")
+                        exit_code, stdout, stderr = interface.ssh_client.execute_command(curl_cmd)
+                        
+                        if exit_code != 0:
+                            print(f"❌ Query failed with exit code {exit_code}")
+                            if stderr:
+                                print(f"Error: {stderr}")
+                            return 1
+                        
+                        if not stdout or not stdout.strip():
+                            print(f"❌ No response from Prometheus")
+                            return 1
+                        
+                        # Parse and display the result
+                        try:
+                            result = json.loads(stdout)
+                            print("\nResult:")
+                            print(json.dumps(result, indent=2))
+                        except json.JSONDecodeError as e:
+                            print(f"❌ Invalid JSON response: {e}")
+                            print(f"Raw response: {stdout[:500]}")
+                            return 1
+                    except Exception as e:
+                        print(f"❌ Error querying Prometheus: {e}")
+                        return 1
+                else:
+                    print(f"❌ Could not find Prometheus service with ID containing: {monitor_id}")
+                    print("Available services:")
+                    all_services = interface.servers.list_all_services()
+                    for s in all_services['all_services']:
+                        if 'prometheus' in s['service_id'].lower():
+                            print(f"  {s['service_id']} (Job: {s['job_id']}) - {s['status']}")
+                    return 1
+            elif 'error' in result:
                 print(f"❌ Error: {result['error']}")
                 return 1
+            else:
+                # Pretty print the result
+                import json
+                print("\nResult:")
+                print(json.dumps(result, indent=2))
+        
+        elif args.list_available_metrics:
+            service_id = args.list_available_metrics
+            print(f"Listing available metrics from Prometheus service {service_id}")
             
-            # Pretty print the result
-            import json
-            print("\nResult:")
-            print(json.dumps(result, indent=2))
+            # Get the host for this service
+            host = interface.servers.get_service_host(service_id)
+            
+            if not host:
+                # Try searching by partial ID match
+                all_services = interface.servers.list_all_services()
+                matching_services = [s for s in all_services['all_services'] 
+                                   if service_id in s['service_id'] and 'prometheus' in s['service_id'].lower()]
+                
+                if matching_services:
+                    service_id = matching_services[0]['service_id']
+                    print(f"Found Prometheus service: {service_id}")
+                    host = interface.servers.get_service_host(service_id)
+            
+            if not host:
+                print(f"❌ Could not find Prometheus service with ID containing: {service_id}")
+                return 1
+            
+            # Build Prometheus endpoint
+            endpoint = f"http://{host}:9090"
+            print(f"Using endpoint: {endpoint}")
+            
+            try:
+                import json
+                import urllib.parse
+                
+                # Query Prometheus for all metric names using label_values
+                query = "{__name__=~\".+\"}"
+                query_url = f"{endpoint}/api/v1/series"
+                encoded_query = urllib.parse.quote(query)
+                curl_cmd = f"curl -s '{query_url}?match[]={encoded_query}'"
+                
+                print(f"Fetching metric names...")
+                exit_code, stdout, stderr = interface.ssh_client.execute_command(curl_cmd)
+                
+                if exit_code != 0 or not stdout or not stdout.strip():
+                    print(f"❌ Failed to fetch metrics")
+                    return 1
+                
+                # Parse the result
+                try:
+                    result = json.loads(stdout)
+                    
+                    if result.get('status') != 'success':
+                        print(f"❌ Error: {result.get('error', 'Unknown error')}")
+                        return 1
+                    
+                    # Extract unique metric names
+                    metric_names = set()
+                    for series in result.get('data', []):
+                        if '__name__' in series:
+                            metric_names.add(series['__name__'])
+                    
+                    if not metric_names:
+                        print("\n⚠️  No metrics found!")
+                        print("\nThis could mean:")
+                        print("  1. The target service doesn't expose Prometheus metrics")
+                        print("  2. Prometheus hasn't scraped the target yet (wait a moment)")
+                        print("  3. The target is down (check with: python main.py --query-metrics", service_id, "\"up\")")
+                        return 0
+                    
+                    # Sort and display metrics
+                    sorted_metrics = sorted(metric_names)
+                    
+                    print(f"\n✅ Found {len(sorted_metrics)} available metrics:\n")
+                    
+                    # Group metrics by prefix for better readability
+                    grouped = {}
+                    for metric in sorted_metrics:
+                        prefix = metric.split('_')[0] if '_' in metric else 'other'
+                        if prefix not in grouped:
+                            grouped[prefix] = []
+                        grouped[prefix].append(metric)
+                    
+                    # Display grouped metrics
+                    for prefix in sorted(grouped.keys()):
+                        print(f"  [{prefix}]")
+                        for metric in grouped[prefix]:
+                            print(f"    - {metric}")
+                        print()
+                    
+                    print(f"\n💡 To query a metric, use:")
+                    print(f"  python main.py --query-metrics {service_id} \"<metric_name>\"")
+                    print(f"\nExample:")
+                    if 'up' in metric_names:
+                        print(f"  python main.py --query-metrics {service_id} \"up\"")
+                    else:
+                        print(f"  python main.py --query-metrics {service_id} \"{sorted_metrics[0]}\"")
+                    
+                except json.JSONDecodeError as e:
+                    print(f"❌ Invalid JSON response: {e}")
+                    print(f"Raw response: {stdout[:500]}")
+                    return 1
+                    
+            except Exception as e:
+                print(f"❌ Error listing metrics: {e}")
+                return 1
         
         elif args.query_service_metrics:
             service_id, query = args.query_service_metrics
@@ -398,10 +595,13 @@ def main():
             # Query Prometheus via SSH (since we can't reach internal cluster hostnames from local machine)
             try:
                 import json
+                import urllib.parse
                 
                 # Build the curl command to run on the cluster
                 query_url = f"{endpoint}/api/v1/query"
-                curl_cmd = f"curl -s '{query_url}?query={query}'"
+                # URL-encode the query parameter properly
+                encoded_query = urllib.parse.quote(query)
+                curl_cmd = f"curl -s '{query_url}?query={encoded_query}'"
                 
                 print(f"Executing query via SSH...")
                 exit_code, stdout, stderr = interface.ssh_client.execute_command(curl_cmd)
@@ -551,6 +751,24 @@ def main():
                     client_id = interface.clients.start_client(recipe, target_service_id, target_service_host)
                 
                 print(f"Client started: {client_id}")
+                print("Monitor the job status through SLURM or check logs.")
+            
+            # Check if this is a service-only recipe (e.g., Prometheus monitoring)
+            elif 'service' in recipe and 'client' not in recipe:
+                logger.info("Service-only recipe detected")
+                
+                # Check if target service is specified (for monitoring services like Prometheus)
+                target_service_id = args.target_service
+                
+                if target_service_id:
+                    logger.info(f"Starting service with target: {target_service_id}")
+                    # Pass target_service_id to the orchestrator
+                    session_id = interface.start_benchmark_session(recipe, target_service_id)
+                else:
+                    logger.info("Starting service without specific target")
+                    session_id = interface.start_benchmark_session(recipe)
+                
+                print(f"Service started: {session_id}")
                 print("Monitor the job status through SLURM or check logs.")
                 
             else:

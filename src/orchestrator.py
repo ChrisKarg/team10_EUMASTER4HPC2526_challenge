@@ -107,7 +107,7 @@ class BenchmarkOrchestrator:
             self.logger.error(f"Failed to load recipe {file_path}: {e}")
             raise
     
-    def start_benchmark_session(self, recipe: dict) -> str:
+    def start_benchmark_session(self, recipe: dict, target_service_id: str = None) -> str:
         """Launch an end-to-end benchmark session"""
         
         session_id = f"session_{len(self._active_sessions) + 1}"
@@ -126,7 +126,7 @@ class BenchmarkOrchestrator:
             # Start services first
             if 'service' in recipe:
                 self.logger.info("Starting service...")
-                service_id = self.servers.start_service(recipe)
+                service_id = self.servers.start_service(recipe, target_service_id)
                 session_info['services'].append(service_id)
                 self.logger.info(f"Service started: {service_id}")
             
