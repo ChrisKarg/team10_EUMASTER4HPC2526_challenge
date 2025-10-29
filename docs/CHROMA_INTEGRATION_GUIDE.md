@@ -112,22 +112,20 @@ squeue -u $USER
 tail -f slurm-3646901.out  # Client job output
 ```
 
-### 5. Retrieve Results
+#### Step 5: Retrieve Results
 
-Once the client job completes:
+Results are automatically copied to the `~/results/` directory:
 
 ```bash
 # SSH to the cluster
 ssh login.lxp.lu
 
-# Find your client job
-sacct -u $USER --format=JobID,JobName,State,ExitCode -S today | grep chroma_benchmark
+# View all results
+ls -lh ~/results/
 
-# View the results from the SLURM output log
-tail -100 slurm-<job_id>.out
+# View the benchmark results JSON
+cat ~/results/chroma_benchmark_results.json
 ```
-
-**Note:** Results are printed in the job log. The JSON file is saved on the compute node's `/tmp` directory and may not be directly accessible from the login node.
 
 ## Workflow
 
@@ -255,31 +253,22 @@ tail -f slurm-<job_id>.out
 
 #### Step 5: Retrieve Results
 
-**Primary Method: View SLURM Logs**
+**Primary Method: Results in `~/results/`**
 
-The benchmark results are printed at the end of the SLURM job output log:
+The benchmark results are automatically copied to your results directory:
 
 ```bash
 ssh login.lxp.lu
 
-# Step 1: Find your completed job ID
-sacct -u $USER --format=JobID,JobName,State -S today | grep chroma_be+
+# View all results
+ls -lh ~/results/
 
-# Step 2: View job status and logs (replace <job_id> with actual job ID)
-sacct -j <job_id> --format=JobID,JobName,State,ExitCode,Elapsed && echo '---LOGS---' && tail -80 slurm-<job_id>.out
+# View the benchmark JSON file
+cat ~/results/chroma_benchmark_results.json
 ```
 
-**Example with actual job ID:**
-```bash
-# If your job ID is 3649933:
-sacct -j 3649933 --format=JobID,JobName,State,ExitCode,Elapsed && echo '---LOGS---' && tail -80 slurm-3649933.out
-```
-
-The output will show:
+**Example output:**
 ```json
-================================================================================
-BENCHMARK SUMMARY
-================================================================================
 {
   "total_documents_inserted": 1000,
   "insertion_throughput": 252.19,
@@ -289,10 +278,7 @@ BENCHMARK SUMMARY
   "p95_query_latency_ms": 5.36,
   "p99_query_latency_ms": 6.13
 }
-================================================================================
 ```
-
-**Note about JSON File:** The results are also saved to `/tmp/chroma_benchmark_results.json` on the compute node where the job runs. However, direct access to compute nodes is typically restricted for security reasons. The SLURM log method is the recommended way to retrieve results.
 
 ## Benchmark Scenarios
 
