@@ -1,0 +1,53 @@
+# Redis Benchmark Client Configuration
+client:
+  name: redis_benchmark
+  description: Benchmark client for Redis in-memory database
+  container_image: benchmark_client.sif
+  duration: 300  # 5 minutes
+
+  # Container configuration
+  container:
+    # Docker source for automatic building if image doesn't exist
+    docker_source: "docker://python:3.11-slim"
+    # Path where container image is stored/should be downloaded
+    image_path: "$HOME/containers/benchmark_client.sif"
+
+  # Resource requirements (SLURM job configuration)
+  resources:
+    partition: cpu  # Same partition as service for better connectivity
+    time: "00:30:00"
+    qos: default
+    nodes: 1
+    ntasks: 1
+    ntasks_per_node: 1
+    mem: "2GB"
+
+  # Environment variables
+  environment:
+    BENCHMARK_DURATION: "300"
+    BENCHMARK_TYPE: "redis"
+    PYTHONUNBUFFERED: "1"  # For real-time log output
+
+  # Benchmark parameters - endpoint will be auto-resolved by orchestrator
+  parameters:
+    # endpoint: auto-resolved from target_service configuration
+    num_operations: 10000        # Number of operations for each test (SET, GET, DEL)
+    key_size: 10                 # Size of keys in bytes
+    value_size: 100              # Size of values in bytes
+    test_persistence: true       # Test persistence operations (BGSAVE, AOF) - boolean flag
+    output_file: "/tmp/redis_benchmark_results.json"
+    wait_for_service: 60         # Wait time for service to be ready
+    # password: ""               # Uncomment if Redis requires authentication
+
+  # Target service configuration (used by orchestrator for service discovery)
+  target_service:
+    name: redis
+    port: 6379
+    health_check_endpoint: "redis://localhost:6379"
+
+  # Script configuration
+  script:
+    name: "redis_benchmark.py"           # Name of the script to run
+    local_path: "benchmark_scripts/"     # Local directory containing script
+    remote_path: "$HOME/benchmark_scripts/"  # Remote directory for script
+

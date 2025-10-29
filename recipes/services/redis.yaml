@@ -1,0 +1,43 @@
+# Redis Service Configuration
+service:
+  name: redis
+  description: Redis in-memory database service
+  container_image: redis_latest.sif
+  command: redis-server
+  args: ["/redis/config/redis.conf"]
+
+  # Container configuration
+  container:
+    # Docker source for automatic building if image doesn't exist
+    docker_source: "docker://redis:7-alpine"
+    # Path where container image is stored/should be downloaded
+    image_path: "$HOME/containers/redis_latest.sif"
+
+  # Resource requirements (SLURM job configuration)
+  resources:
+    time: "01:00:00"
+    qos: default
+    partition: cpu
+    nodes: 1
+    ntasks: 1
+    ntasks_per_node: 1
+    mem: "4GB"
+
+  # Environment variables for Redis configuration
+  environment:
+    # Persistence mode: 'none', 'aof', 'rdb', or 'both'
+    REDIS_PERSISTENCE: "both"
+    # Optional password for authentication (uncomment to enable)
+    # REDIS_PASSWORD: "your_secure_password_here"
+    
+  # Exposed ports (accessible from other containers on same node)
+  ports:
+    - 6379
+
+  # Health check configuration
+  health_check:
+    endpoint: "redis://localhost:6379"
+    timeout: 30
+    retries: 10
+    interval: 3
+

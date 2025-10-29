@@ -18,7 +18,7 @@ python main.py --recipe recipes/services/prometheus.yaml
 
 Pre-configured example to monitor an Ollama service.
 
-**Usage:**
+**Usage (Method 1 - Dynamic Target - RECOMMENDED):**
 
 1. Start Ollama service:
    ```bash
@@ -29,22 +29,36 @@ Pre-configured example to monitor an Ollama service.
    ```bash
    python main.py --status
    ```
-   Example output: `ollama_abc123`
+   Example output: `ollama_5f576bd7`
 
-3. Edit `prometheus_with_ollama.yaml` and replace `ollama_abc123` with your actual service ID
+3. Start Prometheus with dynamic target:
+   ```bash
+   python main.py --recipe recipes/services/prometheus.yaml --target-service ollama_5f576bd7
+   ```
 
-4. Start Prometheus:
+4. Query metrics:
+   ```bash
+   # List Prometheus instances
+   python main.py --list-monitors
+   
+   # Query metrics (use the prometheus service ID from above)
+   python main.py --query-metrics prometheus_4e29faf0 "up"
+   ```
+
+**Usage (Method 2 - Hardcoded in YAML):**
+
+1. Start Ollama service first
+
+2. Edit `prometheus_with_ollama.yaml` and replace the service_id with your actual service ID
+
+3. Start Prometheus:
    ```bash
    python main.py --recipe recipes/services/prometheus_with_ollama.yaml
    ```
 
-5. Query metrics:
+4. Query metrics:
    ```bash
-   # Get prometheus service ID
-   python main.py --status
-   
-   # Query
-   python main.py --query-service-metrics <PROMETHEUS_ID> "up"
+   python main.py --query-metrics prometheus_4e29faf0 "up"
    ```
 
 ## Configuration Format

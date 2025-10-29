@@ -56,9 +56,6 @@ class PrometheusService(Service):
             "  evaluation_interval: 15s",
             "",
             "scrape_configs:",
-            "  - job_name: 'prometheus'",
-            "    static_configs:",
-            "      - targets: ['localhost:9090']",
         ]
         
         # Add monitoring targets from recipe
@@ -68,46 +65,26 @@ class PrometheusService(Service):
                 job_name = target.get('job_name', service_id)
                 port = target.get('port', 11434)  # Default Ollama port
                 
-                commands.extend([
-                    "",
-                    f"  - job_name: '{job_name}'",
-                    "    static_configs:",
-                ])
-                
-                # Check if we need to resolve the service host
+                # Host should already be resolved before script generation
                 if 'host' in target:
-                    # Host explicitly provided
                     host = target['host']
-                    commands.append(f"      - targets: ['{host}:{port}']")
-                else:
-                    # Need to discover the service host from SLURM
                     commands.extend([
-                        f"      - targets: ['SERVICE_HOST_{service_id}:{port}']",
+                        "",
+                        f"  - job_name: '{job_name}'",
+                        "    static_configs:",
+                        f"      - targets: ['{host}:{port}']",
+                    ])
+                else:
+                    # If host is not provided, skip this target
+                    commands.extend([
+                        "",
+                        f"  # Warning: Could not resolve host for service {service_id}",
+                        f"  # Skipping monitoring target: {job_name}",
                     ])
         
         commands.extend([
             "EOF",
             "",
-        ])
-        
-        # Resolve service hosts if needed
-        if self.monitoring_targets:
-            for target in self.monitoring_targets:
-                if 'host' not in target:
-                    service_id = target.get('service_id')
-                    port = target.get('port', 11434)
-                    commands.extend([
-                        f"# Resolve host for service {service_id}",
-                        f"SERVICE_HOST=$(squeue -u $USER --format='%i,%j,%N' --noheader | grep '{service_id}' | head -n 1 | cut -d',' -f3)",
-                        f"if [ -z \"$SERVICE_HOST\" ]; then",
-                        f"  echo 'Warning: Could not find service {service_id} in SLURM queue'",
-                        f"  SERVICE_HOST='unknown'",
-                        f"fi",
-                        f"sed -i \"s/SERVICE_HOST_{service_id}/$SERVICE_HOST/g\" $HOME/prometheus/config/prometheus.yml",
-                        "",
-                    ])
-        
-        commands.extend([
             "echo 'Prometheus configuration created:'",
             "cat $HOME/prometheus/config/prometheus.yml",
             ""

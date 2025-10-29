@@ -1,0 +1,41 @@
+client:
+  name: chroma_benchmark_medium
+  description: Medium-scale benchmark for Chroma vector database
+  container_image: chroma_client.sif
+
+  container:
+    docker_source: "docker://python:3.11-slim"
+    image_path: "$HOME/containers/chroma_client.sif"
+
+  resources:
+    partition: cpu
+    time: "00:30:00"
+    qos: default
+    nodes: 1
+    ntasks: 1
+    ntasks_per_node: 1
+    mem: "8GB"
+
+  environment:
+    BENCHMARK_TYPE: "chroma"
+    PYTHONUNBUFFERED: "1"
+
+  parameters:
+    collection_name: "benchmark_collection_medium"
+    num_documents: 100000
+    embedding_dimension: 384
+    batch_size: 1000
+    num_queries: 500
+    top_k: 10
+    output_file: "/tmp/chroma_benchmark_results_medium.json"
+    wait_for_service: 120
+
+  target_service:
+    name: chroma
+    port: 8000
+    health_check_endpoint: "/api/v1/heartbeat"
+
+  script:
+    name: "chroma_benchmark.py"
+    local_path: "benchmark_scripts/"
+    remote_path: "$HOME/benchmark_scripts/"

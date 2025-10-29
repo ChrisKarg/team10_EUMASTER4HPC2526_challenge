@@ -43,6 +43,7 @@ from .ollama import OllamaService, OllamaClient
 from .prometheus import PrometheusService
 from .chroma import ChromaService, ChromaClient
 from .mysql import MySQLService, MySQLClient
+from .redis import RedisService, RedisClient
 
 # Make key classes available at package level
 __all__ = [
@@ -56,7 +57,9 @@ __all__ = [
     'ChromaService',
     'ChromaClient',
     'MySQLService',
-    'MySQLClient'
+    'MySQLClient',
+    'RedisService',
+    'RedisClient'
 ]
 
 # Verify registrations happened

@@ -89,7 +89,7 @@ class ServersModule(BaseModule):
         
         return result
     
-    def start_service(self, recipe: dict) -> str:
+    def start_service(self, recipe: dict, target_service_id: Optional[str] = None) -> str:
         """Launch a service defined in the recipe on one or multiple nodes"""
         
         service_id = self.generate_id()
@@ -98,6 +98,37 @@ class ServersModule(BaseModule):
         try:
             # Create service using new factory pattern
             service = JobFactory.create_service(recipe, self.config)
+            
+            # If this is a Prometheus service with monitoring targets, resolve hosts
+            if hasattr(service, 'monitoring_targets') and service.monitoring_targets:
+                self.logger.info("Resolving monitoring targets for Prometheus service")
+                
+                # If target_service_id is provided via CLI, use it to override recipe targets
+                if target_service_id:
+                    self.logger.info(f"Using target service from CLI: {target_service_id}")
+                    # Find the host for this service
+                    host = self.get_service_host(target_service_id)
+                    if host:
+                        self.logger.info(f"Resolved target service {target_service_id} to host: {host}")
+                        # Update the first monitoring target with the resolved host
+                        if service.monitoring_targets:
+                            service.monitoring_targets[0]['service_id'] = target_service_id
+                            service.monitoring_targets[0]['host'] = host
+                    else:
+                        self.logger.warning(f"Could not resolve host for target service: {target_service_id}")
+                        self.logger.warning("Prometheus will attempt to monitor an unknown host")
+                else:
+                    # Resolve hosts for all monitoring targets from recipe
+                    for target in service.monitoring_targets:
+                        target_id = target.get('service_id')
+                        if target_id and 'host' not in target:
+                            self.logger.info(f"Resolving host for monitoring target: {target_id}")
+                            host = self.get_service_host(target_id)
+                            if host:
+                                self.logger.info(f"Resolved {target_id} to host: {host}")
+                                target['host'] = host
+                            else:
+                                self.logger.warning(f"Could not resolve host for monitoring target: {target_id}")
             
             # Generate SLURM script using job's own method
             script_content = service.generate_slurm_script(service_id)
