@@ -36,12 +36,12 @@ python main.py --recipe recipes/clients/chroma_benchmark.yaml \
 # 4. Monitor status
 python main.py --status
 
-# 5. Retrieve results (IMPORTANT: From SLURM logs!)
+# 5. Retrieve results
 ssh login.lxp.lu
-# First, find your job ID
-sacct -u $USER --format=JobID,JobName,State -S today | grep chroma_be+
-# Then view the results with the job ID
-sacct -j <job_id> --format=JobID,JobName,State,ExitCode,Elapsed && echo '---LOGS---' && tail -80 slurm-<job_id>.out
+# Results are in the results directory
+ls -lh ~/results/
+# View benchmark results JSON
+cat ~/results/chroma_benchmark_results.json
 ```
 
 ## Key Parameters
@@ -100,26 +100,18 @@ resources:
 
 ## ⚠️ Important Note About Results
 
-**Benchmark results are printed in the SLURM job log, not in a separate file on the login node!**
+**Benchmark results are automatically copied to `~/results/` directory!**
 
 How to retrieve them:
 ```bash
 ssh login.lxp.lu
 
-# Step 1: Find your job ID
-sacct -u $USER --format=JobID,JobName,State -S today | grep chroma
+# View all results
+ls -lh ~/results/
 
-# Step 2: View job status and logs (replace <job_id> with actual ID)
-sacct -j <job_id> --format=JobID,JobName,State,ExitCode,Elapsed && echo '---LOGS---' && tail -80 slurm-<job_id>.out
+# View latest Chroma benchmark
+cat ~/results/chroma_benchmark_results.json
 ```
-
-Example:
-```bash
-# If your job ID is 3649933:
-sacct -j 3649933 --format=JobID,JobName,State,ExitCode,Elapsed && echo '---LOGS---' && tail -80 slurm-3649933.out
-```
-
-The JSON file (`/tmp/chroma_benchmark_results.json`) is created on the compute node but is not directly accessible from the login node.
 
 ## Comparison with Ollama
 
@@ -157,18 +149,10 @@ curl http://mel2198:8000/api/v1/heartbeat
 
 ### Results Not Found
 ```bash
-# Results are in SLURM log, not in /tmp on login node!
+# Results are automatically copied to ~/results/
 ssh login.lxp.lu
-
-# Correct method (2 steps):
-# 1. Find job ID
-sacct -u $USER --format=JobID,JobName,State -S today | grep chroma
-
-# 2. View results with job ID
-sacct -j <job_id> --format=JobID,State,ExitCode,Elapsed && echo '---LOGS---' && tail -80 slurm-<job_id>.out
-
-# The JSON file is on the compute node:
-# /tmp/chroma_benchmark_results.json (not accessible from login node)
+ls -lh ~/results/
+cat ~/results/chroma_benchmark_results.json
 ```
 
 ### Out of Memory

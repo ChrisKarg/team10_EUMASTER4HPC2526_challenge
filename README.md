@@ -415,6 +415,12 @@ client:
 - **GPU**: Required
 - **Models**: llama2, codellama, mistral, etc.
 
+### MySQL (Database)
+- **Container**: `mysql_latest.sif` 
+- **Ports**: 3306
+- **Resources**: CPU-focused
+- **Features**: CRUD benchmarks, connection pooling, multi-threaded benchmarking
+
 ### PostgreSQL (Database)
 - **Container**: `postgres_latest.sif` 
 - **Ports**: 5432
@@ -439,6 +445,11 @@ client:
 - **Metrics**: Latency, throughput, tokens/sec
 - **Parameters**: Model, requests, concurrency
 - **Output**: JSON results with statistics
+
+### MySQL Benchmark
+- **Metrics**: CRUD performance, transaction throughput, latency
+- **Parameters**: Concurrent connections, transactions per client
+- **Workloads**: Mixed read/write operations, multi-threaded clients
 
 ### PostgreSQL Benchmark
 - **Metrics**: CRUD performance, connection handling

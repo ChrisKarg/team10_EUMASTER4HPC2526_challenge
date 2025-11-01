@@ -1,0 +1,71 @@
+# MySQL Service Configuration with Prometheus Monitoring
+service:
+  name: mysql
+  description: MySQL database service
+  container_image: mysql_latest.sif
+  command: mysqld
+  args: [
+    "--datadir=/mysql/data",
+    "--socket=/mysql/run/mysqld.sock",
+    "--pid-file=/mysql/run/mysqld.pid",
+    "--tmpdir=/mysql/tmp",
+    "--skip-networking=0",
+    "--bind-address=0.0.0.0",
+    "--user=mysql"
+  ]
+
+  # Container configuration
+  container:
+    docker_source: "docker://mysql:8.0"
+    image_path: "/mnt/tier2/users/u103300/mysql_latest.sif"
+    force_rebuild: true
+    bind_mounts:
+      - "/mnt/tier2/users/u103300/mysql:/mysql"
+
+  # Resource requirements
+  resources:
+    time: "01:00:00"
+    qos: default
+    partition: cpu
+    nodes: 1
+    ntasks: 1
+    ntasks_per_node: 1
+    mem: "4GB"
+
+  # Environment variables
+  environment:
+    MYSQL_ROOT_PASSWORD: "mysecretpassword"
+    MYSQL_DATABASE: "benchmark_db"
+    MYSQL_USER: "benchmark_user"
+    MYSQL_PASSWORD: "benchmark_pass"
+    MYSQL_DATA_DIR: "/mysql/data"
+    MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+    MYSQL_LOG_CONSOLE: "1"
+
+  # Exposed ports
+  ports:
+    - 3306
+
+  # Health check configuration
+  health_check:
+    timeout: 30
+    retries: 5
+    interval: 10
+
+monitoring:
+  name: prometheus
+  container:
+    docker_source: docker://prom/prometheus:latest
+    image_path: $HOME/containers/prometheus.sif
+  
+  resources:
+    mem: 4G
+    cpus_per_task: 2
+    time: "02:00:00"
+  
+  environment:
+    PROMETHEUS_RETENTION_TIME: "15d"
+    PROMETHEUS_STORAGE_PATH: "/prometheus"
+  
+  ports:
+    - 9090

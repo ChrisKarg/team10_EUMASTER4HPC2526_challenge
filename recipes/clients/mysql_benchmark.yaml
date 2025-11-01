@@ -1,0 +1,60 @@
+# MySQL Benchmark Client Configuration
+client:
+  name: mysql_benchmark
+  description: MySQL benchmark client
+  container_image: mysql_client.sif
+
+  # Container configuration
+  container:
+    # Use full Python image (includes gcc and build tools)
+    docker_source: "docker://python:3.9"
+    image_path: "/mnt/tier2/users/u103300/mysql_client.sif"
+    force_rebuild: true
+    
+    # Install Python packages only (no apt-get needed)
+    build_commands:
+      - "pip install --no-cache-dir mysql-connector-python requests"
+      - "mkdir -p /app"
+
+  # Target service configuration
+  target_service:
+    name: mysql
+    port: 3306
+
+  # Resource requirements
+  resources:
+    time: "00:30:00"
+    qos: default
+    partition: cpu
+    nodes: 1
+    ntasks: 1
+    ntasks_per_node: 1
+    mem: "2GB"
+
+  # Benchmark duration
+  duration: 300  # 5 minutes
+
+  # Environment variables
+  environment:
+    MYSQL_USER: "benchmark_user"
+    MYSQL_PASSWORD: "benchmark_pass"
+    MYSQL_DATABASE: "benchmark_db"
+
+  # Benchmark parameters
+  parameters:
+    num_connections: 10
+    transactions_per_client: 1000
+    output_file: "/tmp/mysql_benchmark_results.json"
+
+  # Command to run the benchmark
+  command: "python"
+  args: [
+    "/app/mysql_benchmark.py",
+    "--endpoint=${TARGET_SERVICE_HOST}:3306",
+    "--user=${MYSQL_USER}",
+    "--password=${MYSQL_PASSWORD}",
+    "--database=${MYSQL_DATABASE}",
+    "--num-connections=10",
+    "--transactions-per-client=1000",
+    "--output-file=/tmp/mysql_benchmark_results.json"
+  ]

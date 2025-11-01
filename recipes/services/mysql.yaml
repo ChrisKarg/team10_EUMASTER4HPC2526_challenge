@@ -1,0 +1,62 @@
+# MySQL Service Configuration
+service:
+  name: mysql
+  description: MySQL database service
+  container_image: mysql_latest.sif
+  command: mysqld
+  args: [
+    "--datadir=/mysql/data",
+    "--socket=/mysql/run/mysqld.sock",
+    "--pid-file=/mysql/run/mysqld.pid",
+    "--tmpdir=/mysql/tmp",
+    "--skip-networking=0",
+    "--bind-address=0.0.0.0",
+    "--user=mysql"
+  ]
+
+  # Container configuration
+  container:
+    # Docker source for automatic building if image doesn't exist
+    docker_source: "docker://mysql:8.0"
+    # Path where container image is stored/should be downloaded
+    image_path: "/mnt/tier2/users/u103300/mysql_latest.sif"
+    # Force rebuild of container
+    force_rebuild: true
+    # Container runtime options
+    bind_mounts:
+      - "/mnt/tier2/users/u103300/mysql:/mysql"
+
+  # Resource requirements (SLURM job configuration)
+  resources:
+    time: "01:00:00"
+    qos: default
+    partition: cpu  # MySQL typically doesn't need GPU
+    nodes: 1
+    ntasks: 1
+    ntasks_per_node: 1
+    mem: "4GB"      # Adjust based on your database needs
+
+  # Environment variables for MySQL configuration
+  environment:
+    MYSQL_ROOT_PASSWORD: "mysecretpassword"  # Required for MySQL initialization
+    MYSQL_DATABASE: "benchmark_db"           # Database to create on startup
+    MYSQL_USER: "benchmark_user"            # User for the benchmark database
+    MYSQL_PASSWORD: "benchmark_pass"        # Password for the benchmark user
+    MYSQL_DATA_DIR: "/mysql/data"          # Where MySQL stores its data
+    MYSQL_LOG_CONSOLE: "1"                 # Log to console for debugging
+    
+  # Custom initialization script to set up remote access
+  init_script: |
+    CREATE USER IF NOT EXISTS 'benchmark_user'@'%' IDENTIFIED BY 'benchmark_pass';
+    GRANT ALL PRIVILEGES ON benchmark_db.* TO 'benchmark_user'@'%';
+    FLUSH PRIVILEGES;
+    
+  # Exposed ports (accessible from other containers on same node)
+  ports:
+    - 3306  # Default MySQL port
+
+  # Health check configuration
+  health_check:
+    timeout: 30
+    retries: 5
+    interval: 10
