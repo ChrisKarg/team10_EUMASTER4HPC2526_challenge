@@ -37,14 +37,19 @@ class PrometheusService(Service):
             args=service_config.get('args', []),
             ports=service_config.get('ports', [9090]),
             container=service_config.get('container', {}),
-            config=config
+            config=config,
+            enable_cadvisor=service_config.get('enable_cadvisor', False),
+            cadvisor_port=service_config.get('cadvisor_port', 8080)
         )
         instance.monitoring_targets = monitoring_targets
         return instance
     
     def get_service_setup_commands(self) -> List[str]:
         """Setup Prometheus configuration and data directories"""
-        commands = [
+        # First get base service setup (includes cAdvisor if enabled)
+        commands = super().get_service_setup_commands()
+        
+        commands.extend([
             "# Prometheus setup",
             "mkdir -p $HOME/prometheus/data",
             "mkdir -p $HOME/prometheus/config",
@@ -56,14 +61,16 @@ class PrometheusService(Service):
             "  evaluation_interval: 15s",
             "",
             "scrape_configs:",
-        ]
+        ])
         
         # Add monitoring targets from recipe
         if self.monitoring_targets:
             for target in self.monitoring_targets:
                 service_id = target.get('service_id')
                 job_name = target.get('job_name', service_id)
-                port = target.get('port', 11434)  # Default Ollama port
+                
+                # Check if this is a cAdvisor target (port 8080 by default) or service target
+                port = target.get('port', 8080)  # Default to cAdvisor port
                 
                 # Host should already be resolved before script generation
                 if 'host' in target:
@@ -74,6 +81,14 @@ class PrometheusService(Service):
                         "    static_configs:",
                         f"      - targets: ['{host}:{port}']",
                     ])
+                    
+                    # If monitoring cAdvisor, also add labels to identify the container host
+                    if port == 8080 or 'cadvisor' in job_name.lower():
+                        commands.extend([
+                            "        labels:",
+                            f"          instance: '{host}'",
+                            "          job_type: 'cadvisor'",
+                        ])
                 else:
                     # If host is not provided, skip this target
                     commands.extend([

@@ -473,6 +473,49 @@ class BenchmarkOrchestrator:
         """Cleanup resources"""
         if self.ssh_client:
             self.ssh_client.disconnect()
+    
+    def create_ssh_tunnel(self, service_id: str, local_port: int = 9090, 
+                         remote_port: int = 9090) -> bool:
+        """
+        Create an SSH tunnel to access a service (typically Prometheus).
+        
+        Args:
+            service_id: Service ID to tunnel to (e.g., prometheus service)
+            local_port: Local port to bind (default: 9090)
+            remote_port: Remote port to forward (default: 9090)
+        
+        Returns:
+            True if tunnel instructions were provided successfully
+        """
+        if not self.ssh_client:
+            self.logger.error("SSH client not available")
+            return False
+        
+        # Get the service host
+        service_host = self.servers.get_service_host(service_id)
+        
+        if not service_host:
+            self.logger.error(f"Could not resolve host for service {service_id}")
+            return False
+        
+        # Create the tunnel (this will print instructions for the user)
+        return self.ssh_client.create_tunnel_simple(
+            remote_host=service_host,
+            remote_port=remote_port,
+            local_port=local_port
+        )
+    
+    def list_ssh_tunnels(self) -> list:
+        """List all active SSH tunnels"""
+        if not self.ssh_client:
+            return []
+        return self.ssh_client.list_tunnels()
+    
+    def close_ssh_tunnel(self, tunnel_id: str) -> bool:
+        """Close a specific SSH tunnel"""
+        if not self.ssh_client:
+            return False
+        return self.ssh_client.close_tunnel(tunnel_id)
 
 
 # Maintain backward compatibility with the old class name

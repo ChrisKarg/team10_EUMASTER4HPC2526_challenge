@@ -24,7 +24,9 @@ class ChromaService(Service):
             ports=service_def.get('ports', [8000]),
             command=service_def.get('command', 'chroma'),
             args=service_def.get('args', ['run', '--host', '0.0.0.0', '--port', '8000']),
-            container=service_def.get('container', {})
+            container=service_def.get('container', {}),
+            enable_cadvisor=service_def.get('enable_cadvisor', False),
+            cadvisor_port=service_def.get('cadvisor_port', 8080)
         )
     
     # All other methods use the default implementations from Service base class

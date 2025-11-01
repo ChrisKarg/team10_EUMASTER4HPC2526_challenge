@@ -83,6 +83,8 @@ def main():
                        help='Get Prometheus endpoint URL for a monitor')
     parser.add_argument('--service-endpoint', type=str, metavar='SERVICE_ID',
                        help='Get endpoint URL for a service (including Prometheus)')
+    parser.add_argument('--create-tunnel', type=str, nargs='+', metavar='SERVICE_ID [LOCAL_PORT] [REMOTE_PORT]',
+                       help='Create SSH tunnel to a service (e.g., --create-tunnel prometheus_abc123 9090 9090). If ports not specified, defaults to 9090:9090')
     parser.add_argument('--verbose', '-v', action='store_true',
                        help='Enable verbose logging')
     parser.add_argument('--setup', action='store_true',
@@ -672,6 +674,34 @@ def main():
                 print(f"Service endpoint for {service_id}:")
                 print(f"  Host: {host}")
                 print(f"\n(Port detection not implemented for non-Prometheus services)")
+        
+        elif args.create_tunnel:
+            # Parse arguments: SERVICE_ID [LOCAL_PORT] [REMOTE_PORT]
+            tunnel_args = args.create_tunnel
+            
+            if len(tunnel_args) < 1:
+                print("❌ Error: SERVICE_ID is required")
+                print("Usage: --create-tunnel SERVICE_ID [LOCAL_PORT] [REMOTE_PORT]")
+                return 1
+            
+            service_id = tunnel_args[0]
+            local_port = int(tunnel_args[1]) if len(tunnel_args) > 1 else 9090
+            remote_port = int(tunnel_args[2]) if len(tunnel_args) > 2 else 9090
+            
+            print(f"Creating SSH tunnel for service: {service_id}")
+            print(f"  Local port: {local_port}")
+            print(f"  Remote port: {remote_port}")
+            
+            success = interface.create_ssh_tunnel(service_id, local_port, remote_port)
+            
+            if not success:
+                print(f"❌ Failed to create SSH tunnel for service {service_id}")
+                return 1
+            
+            print(f"\nℹ️  After running the SSH command above, you can access the service at:")
+            print(f"  http://localhost:{local_port}")
+            
+            return 0
         
         elif args.recipe:
             if not os.path.exists(args.recipe):

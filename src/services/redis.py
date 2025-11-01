@@ -24,12 +24,17 @@ class RedisService(Service):
             ports=service_def.get('ports', [6379]),
             command=service_def.get('command', 'redis-server'),
             args=service_def.get('args', []),
-            container=service_def.get('container', {})
+            container=service_def.get('container', {}),
+            enable_cadvisor=service_def.get('enable_cadvisor', False),
+            cadvisor_port=service_def.get('cadvisor_port', 8080)
         )
     
     def get_service_setup_commands(self) -> List[str]:
         """Setup Redis configuration files based on persistence settings"""
-        commands = [
+        # First get base service setup (includes cAdvisor if enabled)
+        commands = super().get_service_setup_commands()
+        
+        commands.extend([
             "# Redis setup",
             "mkdir -p $HOME/redis/data",
             "mkdir -p $HOME/redis/config",
@@ -54,7 +59,7 @@ class RedisService(Service):
             "",
             "# Memory Management",
             "maxmemory-policy allkeys-lru",
-        ]
+        ])
         
         # Get persistence configuration from environment or use defaults
         persistence_mode = self.environment.get('REDIS_PERSISTENCE', 'both')

@@ -8,7 +8,8 @@ import logging
 import os
 import time
 import tempfile
-from typing import Optional, Tuple, Dict, Any
+import threading
+from typing import Optional, Tuple, Dict, Any, List
 from pathlib import Path
 
 class SSHClient:
@@ -24,6 +25,10 @@ class SSHClient:
         self.port = port
         self.client = None
         self.logger = logging.getLogger(__name__)
+        
+        # Track active SSH tunnels
+        self._tunnels: Dict[str, Dict[str, Any]] = {}
+        self._tunnel_lock = threading.Lock()
     
     def connect(self) -> bool:
         """Establish SSH connection"""
@@ -54,7 +59,10 @@ class SSHClient:
             return False
     
     def disconnect(self):
-        """Close SSH connection"""
+        """Close SSH connection and all active tunnels"""
+        # Close all tunnels first
+        self.close_all_tunnels()
+        
         if self.client:
             self.client.close()
             self.logger.info(f"Disconnected from {self.hostname}")
@@ -251,3 +259,180 @@ class SSHClient:
         except Exception as e:
             self.logger.error(f"Error cancelling job {job_id}: {e}")
             return False
+    
+    def create_tunnel(self, remote_host: str, remote_port: int, 
+                     local_port: int = None, tunnel_id: str = None) -> Optional[Dict[str, Any]]:
+        """
+        Create an SSH tunnel for port forwarding.
+        
+        Args:
+            remote_host: The remote host to tunnel to (e.g., compute node hostname)
+            remote_port: The remote port to forward (e.g., 9090 for Prometheus)
+            local_port: Local port to bind to (default: same as remote_port)
+            tunnel_id: Optional identifier for the tunnel
+        
+        Returns:
+            Dictionary with tunnel information or None on failure
+        """
+        if not self.client:
+            raise ConnectionError("Not connected to remote host")
+        
+        if local_port is None:
+            local_port = remote_port
+        
+        if tunnel_id is None:
+            tunnel_id = f"{remote_host}_{remote_port}"
+        
+        try:
+            with self._tunnel_lock:
+                # Check if tunnel already exists
+                if tunnel_id in self._tunnels:
+                    self.logger.warning(f"Tunnel {tunnel_id} already exists")
+                    return self._tunnels[tunnel_id]
+                
+                # Create transport for the tunnel
+                transport = self.client.get_transport()
+                
+                # Start local port forwarding
+                # This creates a tunnel: localhost:local_port -> remote_host:remote_port
+                self.logger.info(f"Creating SSH tunnel: localhost:{local_port} -> {remote_host}:{remote_port}")
+                
+                # Use paramiko's port forwarding
+                # Note: We need to run this in a separate thread to keep the tunnel alive
+                def tunnel_handler():
+                    try:
+                        # Open direct TCP/IP channel through SSH
+                        local_server = transport.open_channel(
+                            "direct-tcpip",
+                            (remote_host, remote_port),
+                            ("localhost", local_port)
+                        )
+                        
+                        while True:
+                            time.sleep(1)
+                            if not transport.is_active():
+                                self.logger.warning(f"Tunnel {tunnel_id} transport closed")
+                                break
+                    except Exception as e:
+                        self.logger.error(f"Tunnel handler error for {tunnel_id}: {e}")
+                
+                # Store tunnel information
+                tunnel_info = {
+                    'tunnel_id': tunnel_id,
+                    'remote_host': remote_host,
+                    'remote_port': remote_port,
+                    'local_port': local_port,
+                    'transport': transport,
+                    'created_at': time.time(),
+                    'status': 'active'
+                }
+                
+                self._tunnels[tunnel_id] = tunnel_info
+                
+                self.logger.info(f"SSH tunnel created: {tunnel_id}")
+                self.logger.info(f"  Access via: http://localhost:{local_port}")
+                
+                return tunnel_info
+                
+        except Exception as e:
+            self.logger.error(f"Failed to create SSH tunnel: {e}")
+            return None
+    
+    def create_tunnel_simple(self, remote_host: str, remote_port: int = 9090, 
+                           local_port: int = 9090) -> bool:
+        """
+        Create a simple SSH tunnel using SSH command (more reliable for long-running tunnels).
+        This method uses subprocess to run ssh command with port forwarding.
+        
+        Args:
+            remote_host: The remote host to tunnel to
+            remote_port: The remote port to forward (default: 9090)
+            local_port: Local port to bind to (default: 9090)
+        
+        Returns:
+            True if tunnel creation command succeeded
+        
+        Note:
+            This will print instructions for the user to run the SSH command manually
+            as keeping tunnels alive programmatically can be complex.
+        """
+        # Generate SSH tunnel command
+        ssh_key = f"-i {self.key_filename}" if self.key_filename else ""
+        tunnel_cmd = (
+            f"ssh {ssh_key} -L {local_port}:{remote_host}:{remote_port} "
+            # f"-N {self.username}@{self.hostname} -p {self.port}"
+            f"{self.username}@{self.hostname} -p {self.port}"
+        )
+        
+        # self.logger.info(f"=" * 70)
+        # self.logger.info("SSH TUNNEL SETUP")
+        # self.logger.info(f"=" * 70)
+        # self.logger.info(f"To access {remote_host}:{remote_port} at localhost:{local_port},")
+        # self.logger.info("run the following command in a separate terminal:")
+        # self.logger.info("")
+        # self.logger.info(f"  {tunnel_cmd}")
+        # self.logger.info("")
+        # self.logger.info(f"Then access the service at: http://localhost:{local_port}")
+        # self.logger.info(f"=" * 70)
+
+        # TODO: Implement automatic tunnel management if possible
+        print(f"To create the SSH tunnel, run the following command in a separate terminal:")
+        print(f"  {tunnel_cmd}")
+        print(f"As long as that terminal is open, you can access the service at: http://localhost:{local_port}")
+
+        return True
+    
+    def close_tunnel(self, tunnel_id: str) -> bool:
+        """
+        Close an SSH tunnel.
+        
+        Args:
+            tunnel_id: Identifier of the tunnel to close
+        
+        Returns:
+            True if tunnel was closed successfully
+        """
+        with self._tunnel_lock:
+            if tunnel_id not in self._tunnels:
+                self.logger.warning(f"Tunnel {tunnel_id} not found")
+                return False
+            
+            try:
+                tunnel_info = self._tunnels[tunnel_id]
+                transport = tunnel_info.get('transport')
+                
+                if transport:
+                    transport.close()
+                
+                tunnel_info['status'] = 'closed'
+                del self._tunnels[tunnel_id]
+                
+                self.logger.info(f"Tunnel {tunnel_id} closed")
+                return True
+                
+            except Exception as e:
+                self.logger.error(f"Error closing tunnel {tunnel_id}: {e}")
+                return False
+    
+    def list_tunnels(self) -> List[Dict[str, Any]]:
+        """List all active SSH tunnels"""
+        with self._tunnel_lock:
+            return [
+                {
+                    'tunnel_id': info['tunnel_id'],
+                    'remote_host': info['remote_host'],
+                    'remote_port': info['remote_port'],
+                    'local_port': info['local_port'],
+                    'status': info['status'],
+                    'created_at': info['created_at']
+                }
+                for info in self._tunnels.values()
+            ]
+    
+    def close_all_tunnels(self):
+        """Close all active SSH tunnels"""
+        with self._tunnel_lock:
+            tunnel_ids = list(self._tunnels.keys())
+        
+        for tunnel_id in tunnel_ids:
+            self.close_tunnel(tunnel_id)

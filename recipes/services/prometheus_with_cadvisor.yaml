@@ -1,0 +1,119 @@
+# Prometheus Service for Monitoring Services with cAdvisor
+# 
+# This recipe configures Prometheus to monitor containerized services
+# that expose metrics via cAdvisor (port 8080).
+#
+# USAGE:
+# ======
+# 
+# Step 1: Start services with cAdvisor enabled
+# ---------------------------------------------
+# Start one or more services with enable_cadvisor: true in their recipe:
+#
+#   python main.py --recipe recipes/services/ollama_with_cadvisor.yaml
+#
+# Get the service ID from status:
+#
+#   python main.py --status
+#   # Example output: ollama_abc123
+#
+# Step 2: Update monitoring_targets below
+# ----------------------------------------
+# Replace the service_id values with your actual service IDs from Step 1.
+#
+# Step 3: Start Prometheus
+# -------------------------
+#   python main.py --recipe recipes/services/prometheus_with_cadvisor.yaml
+#
+# Step 4: Create SSH tunnel to access Prometheus UI
+# --------------------------------------------------
+#   python main.py --create-tunnel prometheus_xyz789 9090 9090
+#
+# Then run the SSH command shown and open http://localhost:9090 in your browser.
+#
+# Step 5: Query metrics
+# ---------------------
+# Via CLI:
+#   python main.py --query-metrics prometheus_xyz789 "container_memory_usage_bytes"
+#
+# Or via the Prometheus UI at http://localhost:9090
+
+service:
+  name: prometheus
+  description: Prometheus monitoring with cAdvisor scraping
+  
+  # Services to monitor via cAdvisor
+  # Replace these service_id values with your actual running services
+  monitoring_targets:
+    # Example 1: Monitor Ollama service via cAdvisor
+    - service_id: "ollama_df1a2714"      # REPLACE with actual service ID from: python main.py --status
+      job_name: "ollama-cadvisor"      # Name that appears in Prometheus
+      port: 8080                       # cAdvisor metrics port
+    
+    # Example 2: Monitor another service via cAdvisor
+    # - service_id: "redis_def456"     # REPLACE with actual service ID
+    #   job_name: "redis-cadvisor"
+    #   port: 8080
+    
+    # Example 3: Monitor by hostname (if you know the node)
+    # - host: "mel2073"                # Direct hostname
+    #   job_name: "specific-node-cadvisor"
+    #   port: 8080
+  
+  # Container configuration
+  container:
+    docker_source: docker://prom/prometheus:latest
+    image_path: $HOME/containers/prometheus.sif
+  
+  # Resource requirements
+  resources:
+    mem: 4G
+    cpus_per_task: 2
+    time: "02:00:00"
+    partition: cpu
+    qos: default
+  
+  # Environment variables
+  environment:
+    PROMETHEUS_RETENTION_TIME: "15d"
+    PROMETHEUS_STORAGE_PATH: "/prometheus"
+  
+  # Exposed ports
+  ports:
+    - 9090
+  
+  # Enable cAdvisor for Prometheus itself (optional - to monitor Prometheus)
+  enable_cadvisor: false
+  cadvisor_port: 8080
+
+
+# ============================================================================
+# USEFUL cAdvisor METRICS
+# ============================================================================
+#
+# Container resource usage:
+#   container_memory_usage_bytes
+#   container_memory_working_set_bytes
+#   container_cpu_usage_seconds_total
+#   rate(container_cpu_usage_seconds_total[5m])
+#
+# Network metrics:
+#   container_network_receive_bytes_total
+#   container_network_transmit_bytes_total
+#   rate(container_network_receive_bytes_total[5m])
+#
+# Filesystem metrics:
+#   container_fs_usage_bytes
+#   container_fs_limit_bytes
+#
+# Container information:
+#   container_last_seen
+#   container_start_time_seconds
+#
+# Query all containers:
+#   container_memory_usage_bytes{name!=""}
+#
+# Query specific container:
+#   container_memory_usage_bytes{name=~".*ollama.*"}
+#
+# ============================================================================

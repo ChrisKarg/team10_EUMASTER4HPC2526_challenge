@@ -322,9 +322,17 @@ class Service(Job):
             and image_path. When image exists at image_path, it's used; when not found,
             it's downloaded from docker_source and placed at image_path.
             Default: Empty dictionary
+        enable_cadvisor (bool): Enable cAdvisor for container monitoring. When True,
+            cAdvisor will be downloaded if not present and started inside the container
+            to expose metrics on port 8080 for Prometheus scraping.
+            Default: False
+        cadvisor_port (int): Port on which cAdvisor will expose metrics.
+            Default: 8080
     """
     ports: List[int] = None
     container: Dict[str, Any] = None
+    enable_cadvisor: bool = False
+    cadvisor_port: int = 8080
     
     def __post_init__(self):
         if self.ports is None:
@@ -397,7 +405,63 @@ class Service(Job):
     
     def get_service_setup_commands(self) -> List[str]:
         """Default service setup - can be overridden if needed"""
-        return []
+        commands = []
+        
+        # Add cAdvisor setup if enabled
+        if self.enable_cadvisor:
+            commands.extend(self.get_cadvisor_setup_commands())
+        
+        return commands
+    
+    def get_cadvisor_setup_commands(self) -> List[str]:
+        """Setup commands for cAdvisor installation and startup"""
+        cadvisor_path = "$HOME/.local/bin/cadvisor"
+        cadvisor_version = "v0.47.2"  # Latest stable version
+        
+        commands = [
+            "",
+            "# ==================== cAdvisor Setup ====================",
+            "echo '>>> Setting up cAdvisor for container monitoring...'",
+            "",
+            "# Create directory for cAdvisor",
+            "mkdir -p $HOME/.local/bin",
+            "",
+            "# Check if cAdvisor is already downloaded",
+            f"if [ ! -f \"{cadvisor_path}\" ]; then",
+            f"    echo '>>> Downloading cAdvisor {cadvisor_version}...'",
+            f"    wget -q https://github.com/google/cadvisor/releases/download/{cadvisor_version}/cadvisor-{cadvisor_version}-linux-amd64 -O {cadvisor_path}",
+            "    if [ $? -eq 0 ]; then",
+            f"        chmod +x {cadvisor_path}",
+            "        echo '>>> cAdvisor downloaded successfully'",
+            "    else",
+            "        echo '>>> ERROR: Failed to download cAdvisor'",
+            "        exit 1",
+            "    fi",
+            "else",
+            "    echo '>>> cAdvisor already exists at {cadvisor_path}'".replace("{cadvisor_path}", cadvisor_path),
+            "fi",
+            "",
+            "# Start cAdvisor in the background",
+            f"echo '>>> Starting cAdvisor on port {self.cadvisor_port}...'",
+            f"{cadvisor_path} -port={self.cadvisor_port} -housekeeping_interval=10s -max_housekeeping_interval=15s -store_container_labels=false > $HOME/cadvisor.log 2>&1 &",
+            "CADVISOR_PID=$!",
+            "",
+            "# Wait for cAdvisor to start",
+            "sleep 5",
+            "",
+            "# Verify cAdvisor is running",
+            f"if curl -s http://localhost:{self.cadvisor_port}/metrics > /dev/null 2>&1; then",
+            f"    echo '>>> ✓ cAdvisor is running on port {self.cadvisor_port} (PID: '$CADVISOR_PID')'",
+            f"    echo '>>> cAdvisor metrics endpoint: http://$(hostname):{self.cadvisor_port}/metrics'",
+            "else",
+            "    echo '>>> WARNING: cAdvisor may not be responding yet'",
+            "fi",
+            "",
+            "# ========================================================",
+            ""
+        ]
+        
+        return commands
     
     def _get_docker_source(self) -> Optional[str]:
         """Override to use container config from service YAML instead of global config"""
