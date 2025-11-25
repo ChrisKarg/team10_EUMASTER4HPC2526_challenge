@@ -13,9 +13,122 @@ The Monitor module provides Prometheus-based monitoring capabilities for HPC ser
 - **Automatic Service Discovery**: Prometheus automatically finds service hosts via SLURM
 - **PromQL Queries**: Execute queries via CLI or web interface
 
-## Quick Start - cAdvisor Monitoring with SSH Tunnel
+## Quick Start - Complete Benchmarking Session
 
-### Step 1: Start Services with cAdvisor
+### Automated Session (Single Command) ⚡⚡⚡
+
+The fastest way to set up a complete benchmarking session with monitoring is using the automated command:
+
+```bash
+python main.py --start-session \
+    recipes/services/ollama_with_cadvisor.yaml \
+    recipes/clients/ollama_benchmark.yaml \
+    recipes/services/prometheus_with_cadvisor.yaml
+```
+
+**What this does automatically**:
+1. Starts your service with cAdvisor enabled
+2. Waits for service to be assigned to a node (up to 90 seconds)
+3. **Configures and starts Prometheus** with the detected service target (host + ID)
+4. Waits for Prometheus to be ready (up to 60 seconds)
+5. **Starts client benchmark targeting the service** 🎯
+6. Creates SSH tunnel command for you
+
+**Key Innovation**: Prometheus is configured with the actual service node location BEFORE starting, ensuring correct monitoring targets from the start!
+
+**Output**:
+```
+======================================================================
+AUTOMATED BENCHMARKING SESSION
+======================================================================
+Service recipe:    recipes/services/ollama_with_cadvisor.yaml
+Client recipe:     recipes/clients/ollama_benchmark.yaml
+Prometheus recipe: recipes/services/prometheus_with_cadvisor.yaml
+======================================================================
+
+[1/5] Starting service with cAdvisor...
+✅ Service started: session_1
+
+[2/5] Waiting for service to be assigned to a node...
+   Attempt 1/18: Service not yet assigned to node...
+   Attempt 2/18: Service not yet assigned to node...
+✅ Service assigned: ollama_abc123 on mel2073
+
+[3/5] Configuring Prometheus to monitor ollama_abc123 (mel2073)...
+✅ Added ollama_abc123 to monitoring targets
+✅ Prometheus started: session_2
+
+[4/5] Waiting for Prometheus to be ready...
+   Attempt 1/12: Prometheus not yet running...
+✅ Prometheus running: prometheus_6355d49f on mel2074
+
+[5/5] Starting client benchmark targeting ollama_abc123...
+   Service endpoint: http://mel2073:11434
+✅ Client started: client_def456
+
+======================================================================
+SSH TUNNEL SETUP
+======================================================================
+To access mel2074:9090 at localhost:9090,
+run the following command in a separate terminal:
+
+  ssh -i ~/.ssh/id_ed25519_mlux -L 9090:mel2074:9090 -N u103227@login.lxp.lu -p 8822
+
+Then access the service at: http://localhost:9090
+======================================================================
+
+======================================================================
+BENCHMARKING SESSION COMPLETE
+======================================================================
+Service ID:    ollama_abc123
+Service Host:  mel2073:11434
+Client ID:     client_def456
+Prometheus ID: prometheus_6355d49f
+Prometheus UI: http://localhost:9090 (after tunnel setup)
+
+Session Components:
+  1. Service 'ollama' with cAdvisor monitoring
+  2. Client benchmark running against service
+  3. Prometheus collecting metrics from cAdvisor
+
+To access Prometheus UI:
+  1. Run the SSH command shown above in a separate terminal
+  2. Open http://localhost:9090 in your browser
+
+To query metrics:
+  python main.py --query-metrics prometheus_6355d49f "up"
+  python main.py --query-metrics prometheus_6355d49f "container_memory_usage_bytes"
+
+To check client status:
+  python main.py --status
+
+To stop everything:
+  python main.py --stop-service prometheus_6355d49f
+  python main.py --stop-service client_def456
+  python main.py --stop-service ollama_abc123
+  # Or use: python main.py --stop-all-services
+======================================================================
+```
+
+After running the SSH command, open http://localhost:9090 in your browser to access Prometheus!
+
+### Monitoring-Only Setup (Without Client)
+
+If you only need monitoring without a client benchmark:
+
+```bash
+python main.py --start-monitoring \
+    recipes/services/ollama_with_cadvisor.yaml \
+    recipes/services/prometheus_with_cadvisor.yaml
+```
+
+This runs steps 1-2-3-4 (skipping client startup in step 5).
+
+### Manual Setup (Step-by-Step)
+
+If you prefer manual control or need to troubleshoot, follow these steps:
+
+#### Step 1: Start Services with cAdvisor
 
 Start one or more services with cAdvisor monitoring enabled:
 
@@ -44,7 +157,7 @@ Note the service ID: `ollama_abc123` and the node: `mel2073`
 4. Start your service (Ollama) in the container
 5. cAdvisor exposes container metrics at `http://mel2073:8080/metrics`
 
-### Step 2: Configure Prometheus to Monitor cAdvisor
+#### Step 2: Configure Prometheus to Monitor cAdvisor
 
 Edit `recipes/services/prometheus_with_cadvisor.yaml` and add your service ID:
 
@@ -58,7 +171,7 @@ service:
       port: 8080                     # cAdvisor metrics port
 ```
 
-### Step 3: Start Prometheus
+#### Step 3: Start Prometheus
 
 ```bash
 python main.py --recipe recipes/services/prometheus_with_cadvisor.yaml
@@ -90,7 +203,7 @@ Note the Prometheus service ID: `prometheus_6355d49f` and node: `mel2074`
 4. Start scraping cAdvisor metrics from `http://mel2073:8080/metrics`
 5. Make metrics available via its API on port 9090
 
-### Step 4: Create SSH Tunnel to Access Prometheus UI
+#### Step 4: Create SSH Tunnel to Access Prometheus UI
 
 ```bash
 python main.py --create-tunnel prometheus_6355d49f 9090 9090
@@ -112,7 +225,7 @@ Then access the service at: http://localhost:9090
 
 **Copy and run the SSH command** in a separate terminal. Keep that terminal open.
 
-### Step 5: Access Prometheus Web UI
+#### Step 5: Access Prometheus Web UI
 
 Open your browser and go to:
 ```
@@ -121,7 +234,7 @@ http://localhost:9090
 
 You should see the Prometheus web interface!
 
-### Step 6: Query Container Metrics
+#### Step 6: Query Container Metrics
 
 #### Via Web UI (Recommended for Exploration)
 
@@ -268,6 +381,22 @@ The monitoring system consists of:
 - **Cross-Node Monitoring**: Prometheus on node A can scrape cAdvisor on nodes B, C, D
 - **Service Discovery**: Service IDs automatically resolved to hostnames
 - **Persistent Metrics**: Prometheus stores data for the duration specified (default: 15 days)
+- **Sequential Configuration**: Prometheus configured AFTER service node is known, preventing configuration errors
+
+### Automated Workflow (--start-session)
+
+The `--start-session` command automates the entire setup process in 5 steps:
+
+1. **Start Service**: Launch service with cAdvisor enabled
+2. **Wait for Service Node**: Poll SLURM (up to 90s) until service gets node assignment
+3. **Configure & Start Prometheus**: 
+   - Prometheus configuration created with actual service host (e.g., mel2073)
+   - No "Could not resolve host" warnings
+   - Prometheus starts with correct targets from the beginning
+4. **Wait for Prometheus**: Poll SLURM (up to 60s) until Prometheus is running
+5. **Start Client**: Launch benchmark targeting the service endpoint
+
+**Why This Order Matters**: By waiting for the service node assignment BEFORE configuring Prometheus, the monitoring targets are always correct. Previous approaches that started Prometheus before knowing the service location resulted in invalid configurations and required manual intervention.
 
 ## cAdvisor Integration
 
@@ -834,6 +963,101 @@ if host:
         print(result)
 ```
 
+## CLI Quick Reference
+
+### Complete Automated Session (Recommended)
+
+```bash
+# Single command to start service, client, monitoring, and tunnel
+python main.py --start-session SERVICE_RECIPE CLIENT_RECIPE PROMETHEUS_RECIPE
+
+# Example with Ollama
+python main.py --start-session \
+    recipes/services/ollama_with_cadvisor.yaml \
+    recipes/clients/ollama_benchmark.yaml \
+    recipes/services/prometheus_with_cadvisor.yaml
+
+# Example with Redis
+python main.py --start-session \
+    recipes/services/redis_with_cadvisor.yaml \
+    recipes/clients/redis_benchmark.yaml \
+    recipes/services/prometheus_with_cadvisor.yaml
+```
+
+### Monitoring-Only Setup (No Client)
+
+```bash
+# Start service and monitoring without client benchmark
+python main.py --start-monitoring SERVICE_RECIPE PROMETHEUS_RECIPE
+
+# Example
+python main.py --start-monitoring \
+    recipes/services/ollama_with_cadvisor.yaml \
+    recipes/services/prometheus_with_cadvisor.yaml
+```
+
+### Manual Setup (Full Control)
+
+```bash
+# 1. Start service with cAdvisor
+python main.py --recipe recipes/services/ollama_with_cadvisor.yaml
+
+# 2. Check status to get service ID
+python main.py --status
+
+# 3. Start client targeting service
+python main.py --recipe recipes/clients/ollama_benchmark.yaml --target-service <service_id>
+
+# 4. Edit Prometheus recipe to include service ID (manual step)
+
+# 5. Start Prometheus
+python main.py --recipe recipes/services/prometheus_with_cadvisor.yaml
+
+# 6. Check status to get Prometheus ID
+python main.py --status
+
+# 7. Create SSH tunnel
+python main.py --create-tunnel <prometheus_id> 9090 9090
+```
+
+### Service Management
+
+```bash
+# List all services
+python main.py --status
+
+# Stop specific service
+python main.py --stop-service <service_id>
+
+# Stop all services
+python main.py --stop-all-services
+```
+
+### Querying Metrics
+
+```bash
+# Query metrics from Prometheus
+python main.py --query-metrics <prometheus_id> "PROMQL_QUERY"
+
+# List all available metrics
+python main.py --list-available-metrics <prometheus_id>
+
+# Examples
+python main.py --query-metrics prometheus_abc123 "up"
+python main.py --query-metrics prometheus_abc123 "container_memory_usage_bytes"
+python main.py --query-metrics prometheus_abc123 'rate(container_cpu_usage_seconds_total[5m])'
+```
+
+### SSH Tunneling
+
+```bash
+# Create tunnel (default ports 9090:9090)
+python main.py --create-tunnel <prometheus_id>
+
+# Custom ports (local:remote)
+python main.py --create-tunnel <prometheus_id> 8080 9090
+```
+
 ## Command Line Reference
 
 ### MonitorsModule Class
@@ -1308,6 +1532,29 @@ $HOME/
 ## Quick Reference
 
 ### Common Commands
+
+#### Complete Benchmarking Session (Recommended)
+```bash
+# Full session: service + client + monitoring + tunnel
+python main.py --start-session \
+    SERVICE_RECIPE \
+    CLIENT_RECIPE \
+    PROMETHEUS_RECIPE
+
+# Example with Ollama
+python main.py --start-session \
+    recipes/services/ollama_with_cadvisor.yaml \
+    recipes/clients/ollama_benchmark.yaml \
+    recipes/services/prometheus_with_cadvisor.yaml
+```
+
+#### Monitoring Only (No Client)
+```bash
+# Just monitoring without client benchmark
+python main.py --start-monitoring \
+    recipes/services/ollama_with_cadvisor.yaml \
+    recipes/services/prometheus_with_cadvisor.yaml
+```
 
 #### Service Management
 ```bash

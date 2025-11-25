@@ -49,6 +49,7 @@ class ServersModule(BaseModule):
             service_info = {
                 'service_id': service_id,
                 'job_id': job_info.job_id,
+                'job_name': job_info.name if hasattr(job_info, 'name') else None,
                 'status': job_info.status.value if hasattr(job_info.status, 'value') else str(job_info.status),
                 'type': 'tracked'
             }
@@ -58,7 +59,8 @@ class ServersModule(BaseModule):
         # Get SLURM services
         if self.ssh_client:
             try:
-                cmd = "squeue -u $USER --format='%i,%j,%T' --noheader"
+                # Get job info including node assignment
+                cmd = "squeue -u $USER --format='%i,%j,%T,%N' --noheader"
                 exit_code, stdout, stderr = self.ssh_client.execute_command(cmd)
                 
                 if exit_code == 0 and stdout.strip():
@@ -69,21 +71,46 @@ class ServersModule(BaseModule):
                                 job_id = fields[0].strip()
                                 job_name = fields[1].strip()
                                 job_state = fields[2].strip()
+                                nodes = fields[3].strip() if len(fields) >= 4 else None
+                                
+                                # Normalize state: if nodes are assigned and state is not explicitly PENDING, treat as RUNNING
+                                if nodes and nodes != '(null)' and nodes != '':
+                                    # Job has nodes assigned - normalize various running states to RUNNING
+                                    if job_state.upper() in ['RUNNING', 'R', 'COMPLETING', 'CG', 'CONFIGURING', 'CF']:
+                                        job_state = 'RUNNING'
+                                
+                                # print('DEBUG', job_id, job_name, job_state, nodes)
                                 
                                 # Check if this is a service-related job
-                                if any(keyword in job_name.lower() for keyword in ['service', 'ollama', 'server', 'postgres', 'chroma']):
+                                if any(keyword in job_name.lower() for keyword in ['service', 'ollama', 'server', 'postgres', 'chroma', 'prometheus', 'redis']):
                                     # Check if already tracked
-                                    is_tracked = any(info['job_id'] == job_id for info in result['tracked_services'])
+                                    tracked_service = None
+                                    for info in result['tracked_services']:
+                                        if info['job_id'] == job_id:
+                                            tracked_service = info
+                                            break
+                                    # print('DEBUG is_tracked:', tracked_service)
                                     
-                                    if not is_tracked:
+                                    if tracked_service:
+                                        # Update the status of the tracked service with current SLURM state
+                                        tracked_service['status'] = job_state
+                                        tracked_service['job_name'] = job_name
+                                        if nodes:
+                                            tracked_service['nodes'] = nodes
+                                        # Also update in all_services list (same object reference)
+                                    else:
+                                        # Not tracked - add as SLURM-only service
                                         service_info = {
                                             'service_id': job_name,
                                             'job_id': job_id,
+                                            'job_name': job_name,
                                             'status': job_state,
-                                            'type': 'slurm_only'
+                                            'type': 'slurm_only',
+                                            'nodes': nodes
                                         }
                                         result['slurm_services'].append(service_info)
                                         result['all_services'].append(service_info)
+                                    # print(result)
             except Exception as e:
                 self.logger.error(f"Error getting SLURM services: {e}")
         
@@ -233,7 +260,8 @@ class ServersModule(BaseModule):
                 # Query SLURM for node information
                 cmd = f"squeue -j {job_info.job_id} -h -o '%N'"
                 self.logger.debug(f"Running SLURM command: {cmd}")
-                result = self.ssh_client.run_command(cmd)
+                exit_code, stdout, stderr = self.ssh_client.execute_command(cmd)
+                result = stdout if exit_code == 0 else None
                 self.logger.debug(f"SLURM result: '{result}'")
                 
                 if result and result.strip():

@@ -85,6 +85,21 @@ python main.py --recipe recipes/ollama_complete.yaml
 # Run client against a service
 python main.py --recipe recipes/clients/ollama_benchmark.yaml --target-service <SERVICE_JOB_ID>
 
+# Complete automated session (service + client + monitoring + tunnel)
+python main.py --start-session \
+    recipes/services/ollama_with_cadvisor.yaml \
+    recipes/clients/ollama_benchmark.yaml \
+    recipes/services/prometheus_with_cadvisor.yaml
+
+# Monitoring-only setup (without client)
+python main.py --start-monitoring \
+    recipes/services/ollama_with_cadvisor.yaml \
+    recipes/services/prometheus_with_cadvisor.yaml
+
+# Query metrics
+python main.py --query-metrics <prometheus_id> "container_memory_usage_bytes"
+python main.py --create-tunnel <prometheus_id> 9090 9090
+
 # Stop a running service
 python main.py --stop-service <JOB_ID>
 python main.py --stop-all-services

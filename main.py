@@ -85,6 +85,10 @@ def main():
                        help='Get endpoint URL for a service (including Prometheus)')
     parser.add_argument('--create-tunnel', type=str, nargs='+', metavar='SERVICE_ID [LOCAL_PORT] [REMOTE_PORT]',
                        help='Create SSH tunnel to a service (e.g., --create-tunnel prometheus_abc123 9090 9090). If ports not specified, defaults to 9090:9090')
+    parser.add_argument('--start-session', type=str, nargs=3, metavar=('SERVICE_RECIPE', 'CLIENT_RECIPE', 'PROMETHEUS_RECIPE'),
+                       help='Complete automated session: starts service with cAdvisor, starts client benchmark, starts Prometheus monitoring, creates SSH tunnel (e.g., --start-session recipes/services/ollama_with_cadvisor.yaml recipes/clients/ollama_benchmark.yaml recipes/services/prometheus_with_cadvisor.yaml)')
+    parser.add_argument('--start-monitoring', type=str, nargs=2, metavar=('SERVICE_RECIPE', 'PROMETHEUS_RECIPE'),
+                       help='[DEPRECATED: Use --start-session] Automated monitoring setup: starts service with cAdvisor, starts Prometheus, creates SSH tunnel')
     parser.add_argument('--verbose', '-v', action='store_true',
                        help='Enable verbose logging')
     parser.add_argument('--setup', action='store_true',
@@ -702,6 +706,388 @@ def main():
             print(f"  http://localhost:{local_port}")
             
             return 0
+        
+        elif args.start_session:
+            service_recipe_path, client_recipe_path, prometheus_recipe_path = args.start_session
+            
+            print("=" * 70)
+            print("AUTOMATED BENCHMARKING SESSION")
+            print("=" * 70)
+            print(f"Service recipe:    {service_recipe_path}")
+            print(f"Client recipe:     {client_recipe_path}")
+            print(f"Prometheus recipe: {prometheus_recipe_path}")
+            print("=" * 70)
+            
+            # Validate recipe files exist
+            if not os.path.exists(service_recipe_path):
+                print(f"❌ Service recipe not found: {service_recipe_path}")
+                return 1
+            
+            if not os.path.exists(client_recipe_path):
+                print(f"❌ Client recipe not found: {client_recipe_path}")
+                return 1
+            
+            if not os.path.exists(prometheus_recipe_path):
+                print(f"❌ Prometheus recipe not found: {prometheus_recipe_path}")
+                return 1
+            
+            try:
+                import time
+                
+                # Step 1: Start the service with cAdvisor
+                print("\n[1/5] Starting service with cAdvisor...")
+                service_recipe = interface.load_recipe(service_recipe_path)
+                
+                # Verify cAdvisor is enabled
+                if 'service' in service_recipe:
+                    if not service_recipe['service'].get('enable_cadvisor', False):
+                        print("⚠️  Warning: cAdvisor not enabled in service recipe")
+                        print("   Consider adding 'enable_cadvisor: true' to the service section")
+                
+                service_session_id = interface.start_benchmark_session(service_recipe)
+                print(f"✅ Service started: {service_session_id}")
+                
+                # Step 2: Wait for service to be assigned to a node
+                print("\n[2/5] Waiting for service to be assigned to a node...")
+                service_id = None
+                service_host = None
+                
+                for attempt in range(18):  # Try for up to 90 seconds
+                    time.sleep(5)
+                    
+                    # Get all running services
+                    all_services = interface.servers.list_all_services()
+                    
+                    running_services = [s for s in all_services['all_services'] 
+                                      if s['status'].upper() in ['RUNNING', 'PENDING'] 
+                                      and not (s.get('job_name') and 'prometheus' in s['job_name'].lower())]
+                    
+                    if running_services:
+                        latest_service = running_services[-1]
+                        temp_service_id = latest_service['service_id']
+                        host = interface.servers.get_service_host(temp_service_id)
+                        if host:
+                            service_id = temp_service_id
+                            service_host = host
+                            print(f"   ✅ Service ready: {service_id} on {host}")
+                            break
+                        else:
+                            print(f"   Attempt {attempt + 1}/18: Service found but waiting for node assignment...")
+                    else:
+                        print(f"   Attempt {attempt + 1}/18: Waiting for service...")
+                
+                if not service_id or not service_host:
+                    print("❌ Failed to detect service ID/host after 90 seconds")
+                    print("   Service may still be starting. Check status with: python main.py --status")
+                    return 1
+                
+                # Step 3: Configure Prometheus with the detected service and start it
+                print(f"\n[3/5] Configuring Prometheus to monitor {service_id} on {service_host}...")
+                
+                # Load Prometheus recipe
+                prometheus_recipe = interface.load_recipe(prometheus_recipe_path)
+                
+                # Update monitoring targets with the detected service ID and host
+                service_name = service_recipe.get('service', {}).get('name', 'service')
+                if 'service' in prometheus_recipe:
+                    prometheus_recipe['service']['monitoring_targets'] = [{
+                        'service_id': service_id,
+                        'host': service_host,
+                        'job_name': f"{service_name}-cadvisor",
+                        'port': 8080
+                    }]
+                    print(f"✅ Prometheus configured to monitor {service_id} at {service_host}:8080")
+                else:
+                    print("⚠️  Warning: Invalid Prometheus recipe format")
+                
+                # Now start Prometheus with the correct configuration
+                print("   Starting Prometheus with configured targets...")
+                prometheus_session_id = interface.start_benchmark_session(prometheus_recipe)
+                print(f"✅ Prometheus started: {prometheus_session_id}")
+                
+                # Step 4: Wait for Prometheus to be ready
+                print("\n[4/5] Waiting for Prometheus to be assigned to a node...")
+                prometheus_id = None
+                prometheus_host = None
+                
+                for attempt in range(12):  # Try for up to 60 seconds
+                    time.sleep(5)
+                    
+                    all_services = interface.servers.list_all_services()
+                    prometheus_services = [s for s in all_services['all_services'] 
+                                         if s.get('job_name') and 'prometheus' in s['job_name'].lower() 
+                                         and s['status'].upper() in ['RUNNING', 'PENDING']]
+                    
+                    if prometheus_services:
+                        latest_prometheus = prometheus_services[-1]
+                        temp_prometheus_id = latest_prometheus['service_id']
+                        host = interface.servers.get_service_host(temp_prometheus_id)
+                        if host:
+                            prometheus_id = temp_prometheus_id
+                            prometheus_host = host
+                            print(f"   ✅ Prometheus ready: {prometheus_id} on {host}")
+                            break
+                        else:
+                            print(f"   Attempt {attempt + 1}/12: Prometheus waiting for node assignment...")
+                    else:
+                        print(f"   Attempt {attempt + 1}/12: Waiting for Prometheus...")
+                
+                if not prometheus_id or not prometheus_host:
+                    print("⚠️  Warning: Prometheus not ready after 60 seconds")
+                    if prometheus_id:
+                        print(f"   Prometheus detected ({prometheus_id}) but still waiting for node assignment")
+                    else:
+                        print("   Prometheus job not found in SLURM queue")
+                    print("   Continuing anyway, but monitoring may not be available immediately")
+                    print("   Check status with: python main.py --status")
+                
+                # Step 5: Start the client benchmark targeting the service
+                print(f"\n[5/5] Starting client benchmark targeting {service_id}...")
+                
+                # Load client recipe
+                client_recipe = interface.load_recipe(client_recipe_path)
+                
+                # Determine service port from service recipe (common ports)
+                service_name = service_recipe.get('service', {}).get('name', 'service')
+                service_port = None
+                
+                if 'ollama' in service_name.lower():
+                    service_port = 11434
+                elif 'redis' in service_name.lower():
+                    service_port = 6379
+                elif 'chroma' in service_name.lower():
+                    service_port = 8000
+                else:
+                    # Try to get from ports section
+                    ports = service_recipe.get('service', {}).get('ports', [])
+                    if ports:
+                        service_port = ports[0]
+                    else:
+                        service_port = 8000  # Default fallback
+                
+                service_endpoint = f"http://{service_host}:{service_port}"
+                print(f"   Service endpoint: {service_endpoint}")
+                
+                # Start client with target service
+                client_id = interface.clients.start_client(client_recipe, service_id, service_host)
+                print(f"✅ Client started: {client_id}")
+                
+                # Create SSH tunnel to Prometheus
+                if prometheus_id and prometheus_host:
+                    print(f"\nCreating SSH tunnel to Prometheus...")
+                    success = interface.create_ssh_tunnel(prometheus_id, 9090, 9090)
+                    
+                    if not success:
+                        print(f"⚠️  Warning: Failed to create SSH tunnel, but session is complete")
+                else:
+                    print(f"\n⚠️  Skipping SSH tunnel creation (Prometheus not ready)")
+                
+                # Final summary
+                print("\n" + "=" * 70)
+                print("BENCHMARKING SESSION COMPLETE")
+                print("=" * 70)
+                print(f"Service ID:    {service_id}")
+                print(f"Service Host:  {service_host}:{service_port}")
+                print(f"Client ID:     {client_id}")
+                print(f"Prometheus ID: {prometheus_id}")
+                print(f"Prometheus UI: http://localhost:9090 (after tunnel setup)")
+                print("\nSession Components:")
+                print(f"  1. Service '{service_name}' with cAdvisor monitoring")
+                print(f"  2. Client benchmark running against service")
+                print(f"  3. Prometheus collecting metrics from cAdvisor")
+                print(f"\nTo access Prometheus UI:")
+                print(f"  1. Run the SSH command shown above in a separate terminal")
+                print(f"  2. Open http://localhost:9090 in your browser")
+                print(f"\nTo query metrics:")
+                print(f"  python main.py --query-metrics {prometheus_id} \"up\"")
+                print(f"  python main.py --query-metrics {prometheus_id} \"container_memory_usage_bytes\"")
+                print(f"\nTo check client status:")
+                print(f"  python main.py --status")
+                print(f"\nTo stop everything:")
+                print(f"  python main.py --stop-service {prometheus_id}")
+                print(f"  python main.py --stop-service {client_id}")
+                print(f"  python main.py --stop-service {service_id}")
+                print(f"  # Or use: python main.py --stop-all-services")
+                print("=" * 70)
+                
+                return 0
+                
+            except Exception as e:
+                print(f"\n❌ Error during automated session setup: {e}")
+                import traceback
+                traceback.print_exc()
+                return 1
+        
+        elif args.start_monitoring:
+            service_recipe_path, prometheus_recipe_path = args.start_monitoring
+            
+            print("=" * 70)
+            print("AUTOMATED MONITORING SETUP (DEPRECATED)")
+            print("⚠️  Note: Use --start-session for complete workflow with client")
+            print("=" * 70)
+            print(f"Service recipe: {service_recipe_path}")
+            print(f"Prometheus recipe: {prometheus_recipe_path}")
+            print("=" * 70)
+            
+            # Validate recipe files exist
+            if not os.path.exists(service_recipe_path):
+                print(f"❌ Service recipe not found: {service_recipe_path}")
+                return 1
+            
+            if not os.path.exists(prometheus_recipe_path):
+                print(f"❌ Prometheus recipe not found: {prometheus_recipe_path}")
+                return 1
+            
+            try:
+                import time
+                
+                # Step 1: Start the service with cAdvisor
+                print("\n[1/5] Starting service with cAdvisor...")
+                service_recipe = interface.load_recipe(service_recipe_path)
+                
+                # Verify cAdvisor is enabled
+                if 'service' in service_recipe:
+                    if not service_recipe['service'].get('enable_cadvisor', False):
+                        print("⚠️  Warning: cAdvisor not enabled in service recipe")
+                        print("   Consider adding 'enable_cadvisor: true' to the service section")
+                
+                service_session_id = interface.start_benchmark_session(service_recipe)
+                print(f"✅ Service started: {service_session_id}")
+                
+                # Step 2: Wait for service to be assigned to a node and get service ID
+                print("\n[2/5] Waiting for service to be assigned to a node...")
+                service_id = None
+                
+                for attempt in range(12):  # Try for up to 60 seconds
+                    time.sleep(5)
+                    
+                    # Get all running services
+                    all_services = interface.servers.list_all_services()
+                    
+                    # Find the most recently started service (should be ours)
+                    running_services = [s for s in all_services['all_services'] 
+                                      if s['status'].upper() in ['RUNNING', 'PENDING']]
+                    
+                    if running_services:
+                        # Get the last service (most recent)
+                        latest_service = running_services[-1]
+                        service_id = latest_service['service_id']
+                        
+                        # Check if it has a host assigned
+                        host = interface.servers.get_service_host(service_id)
+                        if host:
+                            print(f"✅ Service assigned: {service_id} on {host}")
+                            break
+                        else:
+                            print(f"   Attempt {attempt + 1}/12: Service {service_id} not yet assigned to node...")
+                    else:
+                        print(f"   Attempt {attempt + 1}/12: No running services found yet...")
+                
+                if not service_id:
+                    print("❌ Failed to detect service ID after 60 seconds")
+                    print("   Service may still be starting. Check status with: python main.py --status")
+                    return 1
+                
+                # Step 3: Update Prometheus recipe with the detected service ID
+                print(f"\n[3/5] Configuring Prometheus to monitor {service_id}...")
+                
+                # Load Prometheus recipe
+                prometheus_recipe = interface.load_recipe(prometheus_recipe_path)
+                
+                # Update monitoring targets with the detected service ID
+                if 'service' in prometheus_recipe:
+                    if 'monitoring_targets' not in prometheus_recipe['service']:
+                        prometheus_recipe['service']['monitoring_targets'] = []
+                    
+                    # Check if service_id already exists in targets
+                    existing_target = None
+                    for target in prometheus_recipe['service']['monitoring_targets']:
+                        if target.get('service_id') == service_id:
+                            existing_target = target
+                            break
+                    
+                    if not existing_target:
+                        # Add new monitoring target
+                        service_name = service_recipe.get('service', {}).get('name', 'service')
+                        prometheus_recipe['service']['monitoring_targets'].append({
+                            'service_id': service_id,
+                            'job_name': f"{service_name}-cadvisor",
+                            'port': 8080
+                        })
+                        print(f"✅ Added {service_id} to monitoring targets")
+                    else:
+                        print(f"✅ Service {service_id} already in monitoring targets")
+                else:
+                    print("❌ Invalid Prometheus recipe: missing 'service' section")
+                    return 1
+                
+                # Step 4: Start Prometheus
+                print(f"\n[4/5] Starting Prometheus...")
+                prometheus_session_id = interface.start_benchmark_session(prometheus_recipe)
+                print(f"✅ Prometheus started: {prometheus_session_id}")
+                
+                # Wait for Prometheus to be assigned
+                print("   Waiting for Prometheus to be assigned to a node...")
+                prometheus_id = None
+                
+                for attempt in range(12):  # Try for up to 60 seconds
+                    time.sleep(5)
+                    
+                    all_services = interface.servers.list_all_services()
+                    prometheus_services = [s for s in all_services['all_services'] 
+                                         if 'prometheus' in s['service_id'].lower() and 
+                                         s['status'].upper() in ['RUNNING', 'PENDING']]
+                    
+                    if prometheus_services:
+                        latest_prometheus = prometheus_services[-1]
+                        prometheus_id = latest_prometheus['service_id']
+                        
+                        host = interface.servers.get_service_host(prometheus_id)
+                        if host:
+                            print(f"✅ Prometheus assigned: {prometheus_id} on {host}")
+                            break
+                        else:
+                            print(f"   Attempt {attempt + 1}/12: Prometheus not yet assigned to node...")
+                    else:
+                        print(f"   Attempt {attempt + 1}/12: Prometheus not detected yet...")
+                
+                if not prometheus_id:
+                    print("❌ Failed to detect Prometheus ID after 60 seconds")
+                    print("   Prometheus may still be starting. Check status with: python main.py --status")
+                    return 1
+                
+                # Step 5: Create SSH tunnel
+                print(f"\n[5/5] Creating SSH tunnel to Prometheus...")
+                success = interface.create_ssh_tunnel(prometheus_id, 9090, 9090)
+                
+                if not success:
+                    print(f"❌ Failed to create SSH tunnel")
+                    return 1
+                
+                # Final summary
+                print("\n" + "=" * 70)
+                print("MONITORING SETUP COMPLETE")
+                print("=" * 70)
+                print(f"Service ID: {service_id}")
+                print(f"Prometheus ID: {prometheus_id}")
+                print(f"\nTo access Prometheus UI:")
+                print(f"  1. Run the SSH command shown above in a separate terminal")
+                print(f"  2. Open http://localhost:9090 in your browser")
+                print(f"\nTo query metrics:")
+                print(f"  python main.py --query-metrics {prometheus_id} \"up\"")
+                print(f"  python main.py --query-metrics {prometheus_id} \"container_memory_usage_bytes\"")
+                print(f"\nTo stop everything:")
+                print(f"  python main.py --stop-service {prometheus_id}")
+                print(f"  python main.py --stop-service {service_id}")
+                print("=" * 70)
+                
+                return 0
+                
+            except Exception as e:
+                print(f"\n❌ Error during automated monitoring setup: {e}")
+                import traceback
+                traceback.print_exc()
+                return 1
         
         elif args.recipe:
             if not os.path.exists(args.recipe):
