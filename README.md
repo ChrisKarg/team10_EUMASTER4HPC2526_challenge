@@ -65,6 +65,9 @@ python main.py --recipe recipes/ollama_complete.yaml
 
 # Check system status
 python main.py --status
+
+# Download results from cluster to local machine
+python main.py --download-results
 ```
 
 ## 📋 Usage Examples
@@ -84,6 +87,9 @@ python main.py --recipe recipes/ollama_complete.yaml
 
 # Run client against a service
 python main.py --recipe recipes/clients/ollama_benchmark.yaml --target-service <SERVICE_JOB_ID>
+
+# Download benchmark results from cluster to local machine
+python main.py --download-results
 
 # Stop a running service
 python main.py --stop-service <JOB_ID>
@@ -194,8 +200,19 @@ Clients:
 
 ### Step 5: View Results
 
-Once the client job completes, check the results in the SLURM output file:
+Once the client job completes, you have multiple options for viewing results:
 
+**Option A: Download to Local Machine (Recommended)**
+```bash
+# Download all benchmark results from cluster (from $HOME/results/)
+python main.py --download-results
+
+# Results are saved to ./results/ directory locally
+ls -lh results/
+cat results/redis_benchmark_*.json
+```
+
+**Option B: View Remotely via SSH**
 ```bash
 # SSH to the HPC cluster
 ssh meluxina
@@ -203,8 +220,8 @@ ssh meluxina
 # View the benchmark results (formatted output in SLURM logs)
 cat slurm-<CLIENT_JOB_ID>.out
 
-# Or view detailed JSON results (if saved)
-cat /tmp/ollama_benchmark_results.json
+# Or view detailed JSON results (if saved to $SCRATCH)
+cat $SCRATCH/redis_benchmark_*.json
 ```
 
 The SLURM log file contains formatted output with all benchmark results, making it easy to review performance metrics.

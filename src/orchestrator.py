@@ -516,6 +516,73 @@ class BenchmarkOrchestrator:
         if not self.ssh_client:
             return False
         return self.ssh_client.close_tunnel(tunnel_id)
+    
+    def download_results(self, remote_pattern: str = "$SCRATCH/*.json", 
+                        local_dir: str = "results") -> dict:
+        """
+        Download benchmark results from remote cluster to local directory.
+        
+        Args:
+            remote_pattern: Pattern for remote files (supports wildcards)
+            local_dir: Local directory to save results
+            
+        Returns:
+            Dictionary with download status
+        """
+        if not self.ssh_client:
+            self.logger.error("SSH client not available")
+            return {'error': 'SSH not connected'}
+        
+        import os
+        from pathlib import Path
+        
+        # Create local results directory
+        local_path = Path(local_dir)
+        local_path.mkdir(parents=True, exist_ok=True)
+        
+        self.logger.info(f"Downloading results from {remote_pattern} to {local_dir}")
+        
+        try:
+            # Expand remote pattern and list files
+            cmd = f"ls {remote_pattern} 2>/dev/null || true"
+            exit_code, stdout, stderr = self.ssh_client.execute_command(cmd)
+            
+            if not stdout.strip():
+                self.logger.warning("No result files found matching pattern")
+                return {'downloaded': 0, 'files': [], 'message': 'No files found'}
+            
+            remote_files = stdout.strip().split('\n')
+            downloaded = []
+            failed = []
+            
+            for remote_file in remote_files:
+                remote_file = remote_file.strip()
+                if not remote_file:
+                    continue
+                    
+                # Get just the filename
+                filename = remote_file.split('/')[-1]
+                local_file = local_path / filename
+                
+                self.logger.info(f"Downloading {remote_file} -> {local_file}")
+                
+                if self.ssh_client.download_file(remote_file, str(local_file)):
+                    downloaded.append(str(local_file))
+                    self.logger.info(f"✓ Downloaded {filename}")
+                else:
+                    failed.append(remote_file)
+                    self.logger.error(f"✗ Failed to download {filename}")
+            
+            return {
+                'downloaded': len(downloaded),
+                'failed': len(failed),
+                'files': downloaded,
+                'failed_files': failed
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error downloading results: {e}")
+            return {'error': str(e)}
 
 
 # Maintain backward compatibility with the old class name

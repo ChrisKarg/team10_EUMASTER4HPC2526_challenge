@@ -276,7 +276,8 @@ class RedisClient(Client):
             f"--pipeline {pipeline}",
             f"--tests {tests}",
             f"--native-runner '{native_runner}'",
-            "--copy-to-shared"
+            "--copy-to-shared",
+            "--shared-dir $HOME/results"  # Explicit results directory
         ]
         
         # Add optional password

@@ -31,6 +31,20 @@ parameters:
   native_tests: "set,get"  # Only test SET and GET
 ```
 
+## Download Results
+
+After benchmarks complete, download the JSON results to your local machine:
+
+```bash
+# Download all JSON results from $HOME/results (default)
+python main.py --download-results
+
+# Download from a custom remote path
+python main.py --download-results "$SCRATCH/*.json"
+```
+
+Results are saved to `./results/` locally as `redis_benchmark_{JOB_ID}.json`.
+
 ## Troubleshooting
 
 **"Connection Refused"**
