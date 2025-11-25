@@ -454,7 +454,9 @@ client:
 - **Ports**: 6379
 - **Resources**: CPU-focused
 - **Features**: Key-value storage, caching, persistence (AOF/RDB)
- - **Documentation**: [Redis Integration Guide](docs/REDIS_INTEGRATION_GUIDE.md), [Quick Reference](docs/REDIS_QUICK_REFERENCE.md)
+- **Benchmarking**: Single-run and parametric sweep modes
+- **Analysis**: Automated plot generation for performance visualization
+- **Documentation**: [Redis Integration Guide](docs/REDIS_INTEGRATION_GUIDE.md), [Quick Reference](docs/REDIS_QUICK_REFERENCE.md)
 
 ## 🧪 Benchmark Clients
 
@@ -479,10 +481,13 @@ client:
 - **Workloads**: Similarity search, bulk operations
 
 ### Redis Benchmark
-- **Metrics**: Operations per second (SET/GET/DEL), latency distribution, memory usage
-- **Parameters**: Operations count, key/value sizes, persistence testing
-- **Workloads**: Write-heavy, read-heavy, mixed operations
-- **Output**: JSON results with detailed statistics
+- **Modes**: Single-run (quick tests) and Parametric (comprehensive sweeps)
+- **Metrics**: Operations per second (SET/GET/LPUSH/SADD/etc.), latency distribution (P50/P95/P99)
+- **Parameters**: Client counts (1-500), data sizes (64B-64KB), pipeline depths (1-256)
+- **Parametric Sweep**: Automatically tests all parameter combinations
+- **Analysis**: Generates 6 performance plots (throughput, latency, heatmaps, comparisons)
+- **Automation**: One-command workflow via `scripts/run_redis_parametric.sh`
+- **Output**: JSON results with comprehensive performance data
 
 ## 🎛️ Service Management
 

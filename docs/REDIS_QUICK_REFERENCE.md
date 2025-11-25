@@ -12,10 +12,25 @@
 python main.py --recipe recipes/services/redis.yaml
 ```
 
-### Run Benchmark
+### Run Single Benchmark
 ```bash
-# Auto-discovery of service endpoint
+# Quick test with specific parameters
 python main.py --recipe recipes/clients/redis_benchmark.yaml --target-service <SERVICE_JOB_ID>
+```
+
+### Run Parametric Benchmark (Comprehensive Analysis)
+```bash
+# Automated workflow (recommended)
+./scripts/run_redis_parametric.sh
+
+# OR manual
+python main.py --recipe recipes/clients/redis_parametric.yaml --target-service <SERVICE_JOB_ID>
+```
+
+### Generate Analysis Plots
+```bash
+# After downloading results
+python analysis/plot_redis_results.py
 ```
 
 ## Benchmark Parameters

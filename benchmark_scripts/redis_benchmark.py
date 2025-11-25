@@ -103,9 +103,9 @@ class RedisNativeBenchmark:
             # Try to parse metrics
             metrics: List[float] = []
             for value in parts[1:]:
-                try:
+            try:
                     metrics.append(float(value))
-                except ValueError:
+            except ValueError:
                     test_data.setdefault("extra", []).append(value)
             
             if metrics:
@@ -115,7 +115,7 @@ class RedisNativeBenchmark:
                     test_data["metrics"] = metrics[1:]
             
             results["tests"][test_name] = test_data
-            
+                
         return results
 
     def run(
@@ -197,7 +197,7 @@ def main():
                        help='Output file for results JSON')
     parser.add_argument('--copy-to-shared', action='store_true', help='Copy to shared directory')
     parser.add_argument('--shared-dir', default=None, help='Target shared directory')
-
+    
     args = parser.parse_args()
 
     print("=" * 80)
@@ -241,18 +241,18 @@ def main():
     print("-" * 40)
 
     # Construct final JSON payload
-    payload = {
-        'timestamp': datetime.now().isoformat(),
-        'config': {
-            'endpoint': args.endpoint,
+        payload = {
+            'timestamp': datetime.now().isoformat(),
+            'config': {
+                'endpoint': args.endpoint,
             'requests': args.num_operations,
-            'clients': args.clients,
+                'clients': args.clients,
             'payload_size': args.value_size,
             'pipeline': args.pipeline
-        },
+            },
         'results': results
-    }
-
+        }
+        
     # Save to JSON
     try:
         with open(args.output_file, 'w') as f:
@@ -268,7 +268,7 @@ def main():
                 dest_dir = os.path.expandvars(args.shared_dir)
             else:
                 dest_dir = os.environ.get('SCRATCH') or os.path.expanduser('~')
-            
+
             if not os.path.exists(dest_dir):
                 os.makedirs(dest_dir)
                 

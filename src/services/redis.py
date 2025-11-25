@@ -242,45 +242,73 @@ class RedisClient(Client):
         """
         Generates a host-level python3 command that runs the wrapper script.
         The wrapper script then uses Apptainer to call the native redis-benchmark binary.
+        
+        Supports two modes:
+        1. Single-run mode (default): runs one benchmark with specific parameters
+        2. Parametric mode: runs comprehensive parameter sweeps
         """
         
-        # 1. Resolve arguments
+        # Check if this is a parametric benchmark
+        parametric_mode = self.parameters.get('parametric_mode', False)
+        
+        # 1. Resolve common arguments
         endpoint = self.resolve_service_endpoint()
-        num_ops = self.parameters.get('num_operations', 100000)
-        clients = self.parameters.get('clients', 50)
-        value_size = self.parameters.get('value_size', 256)
-        pipeline = self.parameters.get('pipeline', 1)
-        tests = self.parameters.get('native_tests', 'set,get')
-        
-        # 2. Define paths
-        # Script is assumed to be in $HOME/benchmark_scripts/ on the remote node
-        script_name = self.script_name or "redis_benchmark.py"
-        # Default remote path if not specified
         remote_path = self.script_remote_path or "$HOME/benchmark_scripts/"
-        script_full_path = f"{remote_path.rstrip('/')}/{script_name}"
-        
-        # 3. Define the Native Runner (Apptainer wrapper)
-        # This string is passed to the Python script so it knows how to invoke redis-benchmark
-        container_image_path = self._resolve_container_path() # e.g. $HOME/containers/redis.sif
+        container_image_path = self._resolve_container_path()
         native_runner = f"apptainer exec {container_image_path} redis-benchmark"
         
-        # 4. Construct the python command (running on Host)
-        # We use python3 which is available on Compute Nodes
-        cmd_parts = [
-            "python3",
-            script_full_path,
-            f"--endpoint {endpoint}",
-            f"--num-operations {num_ops}",
-            f"--clients {clients}",
-            f"--value-size {value_size}",
-            f"--pipeline {pipeline}",
-            f"--tests {tests}",
-            f"--native-runner '{native_runner}'",
-            "--copy-to-shared",
-            "--shared-dir $HOME/results"  # Explicit results directory
-        ]
+        if parametric_mode:
+            # PARAMETRIC MODE: Use parametric benchmark script
+            script_name = "redis_parametric_benchmark.py"
+            script_full_path = f"{remote_path.rstrip('/')}/{script_name}"
+            
+            # Get parameter ranges
+            client_counts = self.parameters.get('client_counts', '1,10,50,100,200,500')
+            data_sizes = self.parameters.get('data_sizes', '64,256,1024,4096,16384,65536')
+            pipeline_depths = self.parameters.get('pipeline_depths', '1,4,16,64,256')
+            operations = self.parameters.get('operations_per_test', 100000)
+            tests = self.parameters.get('tests', 'set,get,lpush,lpop,sadd,hset,spop,zadd,zpopmin')
+            
+            cmd_parts = [
+                "python3",
+                script_full_path,
+                f"--endpoint {endpoint}",
+                f"--clients '{client_counts}'",
+                f"--data-sizes '{data_sizes}'",
+                f"--pipelines '{pipeline_depths}'",
+                f"--operations {operations}",
+                f"--tests '{tests}'",
+                f"--native-runner '{native_runner}'",
+                "--copy-to-shared",
+                "--shared-dir $HOME/results"
+            ]
+            
+        else:
+            # SINGLE-RUN MODE: Use standard benchmark script
+            script_name = self.script_name or "redis_benchmark.py"
+            script_full_path = f"{remote_path.rstrip('/')}/{script_name}"
+            
+            num_ops = self.parameters.get('num_operations', 100000)
+            clients = self.parameters.get('clients', 50)
+            value_size = self.parameters.get('value_size', 256)
+            pipeline = self.parameters.get('pipeline', 1)
+            tests = self.parameters.get('native_tests', 'set,get')
+            
+            cmd_parts = [
+                "python3",
+                script_full_path,
+                f"--endpoint {endpoint}",
+                f"--num-operations {num_ops}",
+                f"--clients {clients}",
+                f"--value-size {value_size}",
+                f"--pipeline {pipeline}",
+                f"--tests {tests}",
+                f"--native-runner '{native_runner}'",
+                "--copy-to-shared",
+                "--shared-dir $HOME/results"
+            ]
         
-        # Add optional password
+        # Add optional password (both modes)
         password = self.parameters.get('password')
         if password:
             cmd_parts.append(f"--password {password}")
