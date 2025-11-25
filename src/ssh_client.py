@@ -11,6 +11,8 @@ import tempfile
 import threading
 from typing import Optional, Tuple, Dict, Any, List
 from pathlib import Path
+import subprocess
+import shlex
 
 class SSHClient:
     """SSH client for remote HPC operations"""
@@ -358,11 +360,34 @@ class SSHClient:
         """
         # Generate SSH tunnel command
         ssh_key = f"-i {self.key_filename}" if self.key_filename else ""
-        tunnel_cmd = (
-            f"ssh {ssh_key} -L {local_port}:{remote_host}:{remote_port} "
-            # f"-N {self.username}@{self.hostname} -p {self.port}"
-            f"{self.username}@{self.hostname} -p {self.port}"
-        )
+        # Build argument list for subprocess (safer than passing a single shell string)
+        args = ["ssh"]
+        if self.key_filename:
+            args += ["-i", self.key_filename]
+        args += [
+            "-L", f"{local_port}:{remote_host}:{remote_port}",
+            "-N", "-f",
+            f"{self.username}@{self.hostname}",
+            "-p", str(self.port),
+            "-o", "ExitOnForwardFailure=yes",
+            "-o", "ServerAliveInterval=60",
+            "-o", "ServerAliveCountMax=3",
+        ]
+
+        # Human-readable command for logging/printing
+        tunnel_cmd = " ".join(shlex.quote(a) for a in args)
+
+        try:
+            self.logger.info(f"Running SSH tunnel command: {tunnel_cmd}")
+            # Run the ssh command (will background because of -f)
+            subprocess.run(args, check=True)
+            self.logger.info("SSH tunnel started successfully")
+        except subprocess.CalledProcessError as e:
+            self.logger.error(f"SSH tunnel command failed: {e}")
+            return False
+        except Exception as e:
+            self.logger.error(f"Failed to start SSH tunnel: {e}")
+            return False
         
         # self.logger.info(f"=" * 70)
         # self.logger.info("SSH TUNNEL SETUP")
@@ -375,10 +400,9 @@ class SSHClient:
         # self.logger.info(f"Then access the service at: http://localhost:{local_port}")
         # self.logger.info(f"=" * 70)
 
-        # TODO: Implement automatic tunnel management if possible
-        print(f"To create the SSH tunnel, run the following command in a separate terminal:")
+        print(f"Command used to create the SSH tunnel:")
         print(f"  {tunnel_cmd}")
-        print(f"As long as that terminal is open, you can access the service at: http://localhost:{local_port}")
+        print(f"You can access the service at: http://localhost:{local_port}")
 
         return True
     
