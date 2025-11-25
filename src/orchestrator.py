@@ -355,9 +355,9 @@ class BenchmarkOrchestrator:
             
             for job in jobs:
                 name = job['name'].lower()
-                if 'service' in name or 'ollama' in name or 'server' in name:
+                if any(kw in name for kw in ['service', 'ollama', 'server', 'redis', 'mysql', 'postgres', 'chroma']):
                     services.append(job)
-                elif 'client' in name or 'benchmark' in name:
+                elif any(kw in name for kw in ['client', 'benchmark', 'workload']):
                     clients.append(job)
                 else:
                     other.append(job)

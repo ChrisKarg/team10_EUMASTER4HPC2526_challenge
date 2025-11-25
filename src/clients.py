@@ -265,17 +265,8 @@ class ClientsModule(BaseModule):
         
         remote_script_path = f"{remote_path.rstrip('/')}/{script_name}"
         
-        # Check if script already exists remotely
-        check_cmd = f"test -f {remote_script_path} && echo 'exists' || echo 'missing'"
-        try:
-            exit_code, stdout, stderr = self.ssh_client.execute_command(check_cmd)
-            
-            if exit_code == 0 and 'exists' in stdout:
-                self.logger.info(f"Script {script_name} already exists at {remote_script_path}")
-                return
-        except Exception as e:
-            self.logger.warning(f"Failed to check if script exists remotely: {e}")
-            # Continue with upload attempt
+        # Always upload script to ensure it is up to date
+        # (removed remote existence check)
         
         # Find script locally
         local_candidates = [

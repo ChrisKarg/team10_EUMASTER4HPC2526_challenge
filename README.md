@@ -437,7 +437,7 @@ client:
 - **Ports**: 6379
 - **Resources**: CPU-focused
 - **Features**: Key-value storage, caching, persistence (AOF/RDB)
-- **Documentation**: [Redis Integration Guide](docs/REDIS_INTEGRATION_GUIDE.md), [Quick Reference](docs/REDIS_QUICK_REFERENCE.md)
+ - **Documentation**: [Redis Integration Guide](docs/REDIS_INTEGRATION_GUIDE.md), [Quick Reference](docs/REDIS_QUICK_REFERENCE.md)
 
 ## 🧪 Benchmark Clients
 

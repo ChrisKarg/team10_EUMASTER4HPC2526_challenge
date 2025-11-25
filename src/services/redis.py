@@ -188,7 +188,7 @@ class RedisService(Service):
 
 
 class RedisClient(Client):
-    """Redis benchmark client implementation"""
+    """Redis benchmark client implementation (Native Wrapper)"""
     
     @classmethod
     def from_recipe(cls, recipe: Dict[str, Any], config: Dict[str, Any]) -> 'RedisClient':
@@ -239,51 +239,54 @@ class RedisClient(Client):
         return f"{host}:{port}"
     
     def get_container_command(self) -> str:
-        """Override to handle boolean flags properly for Redis benchmark"""
-        cmd_parts = ["apptainer exec"]
+        """
+        Generates a host-level python3 command that runs the wrapper script.
+        The wrapper script then uses Apptainer to call the native redis-benchmark binary.
+        """
         
-        # Add environment variables
-        for key, value in self.environment.items():
-            cmd_parts.append(f"--env {key}={value}")
-        
-        # Mount benchmark scripts directory
-        scripts_dir = self.config.get('benchmark', {}).get('scripts_dir', '$HOME/benchmark_scripts')
-        cmd_parts.append(f"--bind {scripts_dir}:/app")
-        
-        # Resolve container path
-        container_path = self._resolve_container_path()
-        cmd_parts.append(container_path)
-        
-        # Build Python command
-        script_name = self.script_name or "redis_benchmark.py"
-        python_cmd = f"python /app/{script_name}"
-        
-        # Add endpoint parameter
+        # 1. Resolve arguments
         endpoint = self.resolve_service_endpoint()
-        if endpoint:
-            python_cmd += f" --endpoint={endpoint}"
+        num_ops = self.parameters.get('num_operations', 100000)
+        clients = self.parameters.get('clients', 50)
+        value_size = self.parameters.get('value_size', 256)
+        pipeline = self.parameters.get('pipeline', 1)
+        tests = self.parameters.get('native_tests', 'set,get')
         
-        # Add other parameters, handling booleans specially
-        for key, value in self.parameters.items():
-            if key == 'endpoint':  # Skip endpoint as it's handled above
-                continue
-            
-            cli_key = key.replace('_', '-')
-            
-            # Handle boolean flags (no value, just the flag)
-            if isinstance(value, bool):
-                if value:  # Only add flag if True
-                    python_cmd += f" --{cli_key}"
-            else:
-                python_cmd += f" --{cli_key}={value}"
+        # 2. Define paths
+        # Script is assumed to be in $HOME/benchmark_scripts/ on the remote node
+        script_name = self.script_name or "redis_benchmark.py"
+        # Default remote path if not specified
+        remote_path = self.script_remote_path or "$HOME/benchmark_scripts/"
+        script_full_path = f"{remote_path.rstrip('/')}/{script_name}"
         
-        # Run inside container
-        cmd_parts.extend(["bash", "-c", f'"pip install -q requests && {python_cmd}"'])
+        # 3. Define the Native Runner (Apptainer wrapper)
+        # This string is passed to the Python script so it knows how to invoke redis-benchmark
+        container_image_path = self._resolve_container_path() # e.g. $HOME/containers/redis.sif
+        native_runner = f"apptainer exec {container_image_path} redis-benchmark"
         
+        # 4. Construct the python command (running on Host)
+        # We use python3 which is available on Compute Nodes
+        cmd_parts = [
+            "python3",
+            script_full_path,
+            f"--endpoint {endpoint}",
+            f"--num-operations {num_ops}",
+            f"--clients {clients}",
+            f"--value-size {value_size}",
+            f"--pipeline {pipeline}",
+            f"--tests {tests}",
+            f"--native-runner '{native_runner}'",
+            "--copy-to-shared"
+        ]
+        
+        # Add optional password
+        password = self.parameters.get('password')
+        if password:
+            cmd_parts.append(f"--password {password}")
+
         return " ".join(cmd_parts)
 
 
 # Register the Redis implementations with the factory
 JobFactory.register_service('redis', RedisService)
 JobFactory.register_client('redis', RedisClient)
-

@@ -71,7 +71,7 @@ class ServersModule(BaseModule):
                                 job_state = fields[2].strip()
                                 
                                 # Check if this is a service-related job
-                                if any(keyword in job_name.lower() for keyword in ['service', 'ollama', 'server', 'postgres', 'chroma']):
+                                if any(keyword in job_name.lower() for keyword in ['service', 'ollama', 'server', 'postgres', 'chroma', 'redis', 'mysql']):
                                     # Check if already tracked
                                     is_tracked = any(info['job_id'] == job_id for info in result['tracked_services'])
                                     

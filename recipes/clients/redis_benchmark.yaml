@@ -1,20 +1,19 @@
-# Redis Benchmark Client Configuration
+# Redis Benchmark Client Configuration (Native Wrapper)
 client:
   name: redis_benchmark
-  description: Benchmark client for Redis in-memory database
-  container_image: benchmark_client.sif
-  duration: 300  # 5 minutes
+  description: Native Redis Benchmark Client
+  container_image: redis_latest.sif # Uses the Redis image which contains the benchmark tool
+  duration: 600 
 
   # Container configuration
   container:
-    # Docker source for automatic building if image doesn't exist
-    docker_source: "docker://python:3.11-slim"
-    # Path where container image is stored/should be downloaded
-    image_path: "$HOME/containers/benchmark_client.sif"
+    # The image containing redis-benchmark
+    docker_source: "docker://redis:7-alpine"
+    image_path: "$HOME/containers/redis_latest.sif"
 
   # Resource requirements (SLURM job configuration)
   resources:
-    partition: cpu  # Same partition as service for better connectivity
+    partition: cpu
     time: "00:30:00"
     qos: default
     nodes: 1
@@ -24,22 +23,21 @@ client:
 
   # Environment variables
   environment:
-    BENCHMARK_DURATION: "300"
-    BENCHMARK_TYPE: "redis"
-    PYTHONUNBUFFERED: "1"  # For real-time log output
+    BENCHMARK_TYPE: "redis_native"
 
-  # Benchmark parameters - endpoint will be auto-resolved by orchestrator
+  # Benchmark parameters
   parameters:
-    # endpoint: auto-resolved from target_service configuration
-    num_operations: 10000        # Number of operations for each test (SET, GET, DEL)
-    key_size: 10                 # Size of keys in bytes
-    value_size: 100              # Size of values in bytes
-    test_persistence: true       # Test persistence operations (BGSAVE, AOF) - boolean flag
-    output_file: "/tmp/redis_benchmark_results.json"
-    wait_for_service: 60         # Wait time for service to be ready
-    # password: ""               # Uncomment if Redis requires authentication
+    # Core redis-benchmark flags
+    num_operations: 100000        # -n
+    clients: 50                   # -c
+    value_size: 256               # -d
+    pipeline: 1                   # -P
+    native_tests: "ping,set,get"  # -t (comma separated)
+    
+    # Orchestrator settings
+    wait_for_service: 60          # Wait time for service to be ready
 
-  # Target service configuration (used by orchestrator for service discovery)
+  # Target service configuration
   target_service:
     name: redis
     port: 6379
@@ -47,7 +45,6 @@ client:
 
   # Script configuration
   script:
-    name: "redis_benchmark.py"           # Name of the script to run
-    local_path: "benchmark_scripts/"     # Local directory containing script
-    remote_path: "$HOME/benchmark_scripts/"  # Remote directory for script
-
+    name: "redis_benchmark.py"
+    local_path: "benchmark_scripts/"
+    remote_path: "$HOME/benchmark_scripts/"
