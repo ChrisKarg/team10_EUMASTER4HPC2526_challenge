@@ -280,6 +280,107 @@ cat ~/results/chroma_benchmark_results.json
 }
 ```
 
+## Parametric Benchmarking
+
+For comprehensive performance analysis, use the **parametric benchmark suite** that automatically sweeps across multiple parameter combinations.
+
+### What is Parametric Benchmarking?
+
+The parametric benchmark runs the benchmark across a grid of parameters:
+- **Document counts**: 500, 1000, 2000, 5000
+- **Embedding dimensions**: 192, 384, 768, 1536
+- **Batch sizes**: 50, 100, 200, 500
+- **Query counts**: Fixed at 1000 per test
+- **Top-K**: Fixed at 10 results per query
+
+This generates comprehensive performance data for creating analysis plots like:
+- Insertion throughput vs. number of documents
+- Insertion throughput vs. embedding dimension
+- Insertion throughput vs. batch size
+- Query latency percentiles (P95, P99)
+- Performance heatmaps (2D visualizations)
+
+### Running Parametric Benchmarks
+
+**Option 1: Automated Workflow (Recommended)**
+
+Use the all-in-one helper script:
+
+```bash
+./scripts/run_chroma_parametric.sh
+```
+
+This script:
+1. Checks for/starts Chroma service
+2. Submits the parametric benchmark job
+3. Waits for completion (1-4 hours)
+4. Downloads results automatically
+5. Generates all analysis plots
+6. Opens the plots directory
+
+**Option 2: Manual Steps**
+
+```bash
+# 1. Start Chroma service
+python main.py --recipe recipes/services/chroma.yaml
+
+# 2. Get service ID
+python main.py --list-running-services
+
+# 3. Submit parametric benchmark
+python main.py --recipe recipes/clients/chroma_parametric.yaml --target-service <SERVICE_ID>
+
+# 4. Wait for completion (monitor with --status)
+python main.py --status
+
+# 5. Download results
+python main.py --download-results
+
+# 6. Generate plots
+python analysis/plot_chroma_results.py
+```
+
+### Customizing Parameter Ranges
+
+Edit `recipes/clients/chroma_parametric.yaml` to customize the sweep:
+
+```yaml
+parameters:
+  num_documents: "500,1000"           # Fewer points for faster runs
+  embedding_dimensions: "384,768"     # Focus on specific dimensions
+  batch_sizes: "100,200"              # Test key batch values
+  num_queries: 500                    # Reduce for faster testing
+```
+
+### Analysis Plots
+
+The analysis script generates 7 plots in `analysis/plots/`:
+
+1. **Insertion Throughput vs Documents**: Shows scaling with document count
+2. **Insertion Throughput vs Dimension**: Impact of embedding dimension on performance
+3. **Insertion Throughput vs Batch Size**: Effect of batch size on throughput
+4. **Query Latency vs Documents**: P99/P95/Average latency trends
+5. **Query Latency vs Dimension**: Dimension impact on query performance
+6. **Insertion Heatmap**: 2D view of throughput across documents and batch sizes
+7. **Query Latency Heatmap**: 2D view of P99 latency across documents and dimensions
+
+### Interpreting Results
+
+**High Insertion Throughput:**
+- Large batch sizes (200-500)
+- Smaller embedding dimensions (192-384)
+- More documents (throughput stabilizes at scale)
+
+**Low Query Latency:**
+- Smaller embedding dimensions (192-384)
+- Fewer documents in collection
+- Warm cache after initial queries
+
+**Optimal Configurations:**
+- **Balanced**: 1000 docs, 384-dim, batch=100
+- **Throughput-optimized**: 5000 docs, 192-dim, batch=500
+- **Latency-optimized**: 500 docs, 192-dim, batch=100
+
 ## Benchmark Scenarios
 
 Chroma integration includes pre-configured benchmark scenarios optimized for MeluXina's architecture:
