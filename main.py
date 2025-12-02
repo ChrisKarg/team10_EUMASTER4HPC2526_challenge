@@ -89,6 +89,8 @@ def main():
                        help='Complete automated session: starts service with cAdvisor, starts client benchmark, starts Prometheus monitoring, creates SSH tunnel (e.g., --start-session recipes/services/ollama_with_cadvisor.yaml recipes/clients/ollama_benchmark.yaml recipes/services/prometheus_with_cadvisor.yaml)')
     parser.add_argument('--start-monitoring', type=str, nargs=2, metavar=('SERVICE_RECIPE', 'PROMETHEUS_RECIPE'),
                        help='[DEPRECATED: Use --start-session] Automated monitoring setup: starts service with cAdvisor, starts Prometheus, creates SSH tunnel')
+    parser.add_argument('--download-results', nargs='?', const='$HOME/results/*.json', metavar='REMOTE_PATTERN',
+                       help='Download benchmark results from cluster (default: $HOME/results/*.json). Saves to ./results/')
     parser.add_argument('--verbose', '-v', action='store_true',
                        help='Enable verbose logging')
     parser.add_argument('--setup', action='store_true',
@@ -1088,6 +1090,33 @@ def main():
                 import traceback
                 traceback.print_exc()
                 return 1
+        
+        elif args.download_results is not None:
+            print("Downloading benchmark results from cluster...")
+            
+            remote_pattern = args.download_results
+            result = interface.download_results(remote_pattern=remote_pattern, local_dir="results")
+            
+            if 'error' in result:
+                print(f"❌ Error: {result['error']}")
+                return 1
+            
+            if result['downloaded'] == 0:
+                print(f"⚠️  No files found matching pattern: {remote_pattern}")
+                print("\nTo download results, ensure your benchmark jobs have completed and check the remote path.")
+                return 0
+            
+            print(f"\n✅ Downloaded {result['downloaded']} file(s) to ./results/")
+            
+            if result['files']:
+                print("\nDownloaded files:")
+                for filepath in result['files']:
+                    print(f"  - {filepath}")
+            
+            if result.get('failed'):
+                print(f"\n❌ Failed to download {result['failed']} file(s):")
+                for filepath in result.get('failed_files', []):
+                    print(f"  - {filepath}")
         
         elif args.recipe:
             if not os.path.exists(args.recipe):

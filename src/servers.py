@@ -82,7 +82,7 @@ class ServersModule(BaseModule):
                                 # print('DEBUG', job_id, job_name, job_state, nodes)
                                 
                                 # Check if this is a service-related job
-                                if any(keyword in job_name.lower() for keyword in ['service', 'ollama', 'server', 'postgres', 'chroma', 'prometheus', 'redis']):
+                                if any(keyword in job_name.lower() for keyword in ['service', 'ollama', 'server', 'postgres', 'chroma', 'prometheus', 'redis', 'redis', 'mysql']):
                                     # Check if already tracked
                                     tracked_service = None
                                     for info in result['tracked_services']:

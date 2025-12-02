@@ -9,6 +9,10 @@ requests>=2.25.0
 click>=8.0.0
 rich>=10.0.0
 
+# Analysis and plotting dependencies
+matplotlib>=3.3.0
+numpy>=1.19.0
+
 # Development dependencies (optional)
 pytest>=6.0.0
 black>=21.0.0
