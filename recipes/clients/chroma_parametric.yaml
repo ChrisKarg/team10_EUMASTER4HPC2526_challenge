@@ -1,0 +1,58 @@
+# Chroma Parametric Benchmark Client Configuration
+# This recipe runs comprehensive parameter sweeps across multiple configurations
+# to collect performance data for analysis and plotting
+
+client:
+  name: chroma_parametric_benchmark
+  description: Chroma Parametric Benchmark Suite - Full Parameter Sweep
+  container_image: chroma_client.sif
+  duration: 14400  # 4 hours for comprehensive sweep
+
+  # Container configuration
+  container:
+    docker_source: "docker://python:3.11-slim"
+    image_path: "$HOME/containers/chroma_client.sif"
+
+  # Resource requirements (SLURM job configuration)
+  resources:
+    partition: cpu
+    time: "01:00:00"  # 1 hour
+    qos: default
+    nodes: 1
+    ntasks: 1
+    ntasks_per_node: 1
+    mem: "8GB"  # More memory for collecting large result sets and embeddings
+
+  # Environment variables
+  environment:
+    BENCHMARK_TYPE: "chroma_parametric"
+    BENCHMARK_MODE: "parametric"
+    PYTHONUNBUFFERED: "1"  # For real-time log output
+
+  # Parametric benchmark configuration
+  parameters:
+    # Parameter sweep ranges (comma-separated)
+    # These will be passed to the parametric script
+    num_documents: "500,1000,2000,5000"
+    embedding_dimensions: "192,384,768,1536"
+    batch_sizes: "50,100,200,500"
+    
+    # Test configuration
+    num_queries: 1000
+    top_k: 10
+    collection_prefix: "bench"
+    
+    # Orchestrator settings
+    wait_for_service: 60
+
+  # Target service configuration
+  target_service:
+    name: chroma
+    port: 8000
+    health_check_endpoint: "/api/v1/heartbeat"
+
+  # Script configuration
+  script:
+    name: "chroma_parametric_benchmark.py"
+    local_path: "benchmark_scripts/"
+    remote_path: "$HOME/benchmark_scripts/"

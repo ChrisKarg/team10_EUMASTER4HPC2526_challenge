@@ -10,16 +10,21 @@
 ### 2. Recipes
 - **Service**: `recipes/services/chroma.yaml`
 - **Client**: `recipes/clients/chroma_benchmark.yaml`
+- **Parametric**: `recipes/clients/chroma_parametric.yaml`
 
-### 3. Benchmark Script
-- **File**: `benchmark_scripts/chroma_benchmark.py`
-- **Features**: Insertion, Queries, Metrics
+### 3. Benchmark Scripts
+- **Single-run**: `benchmark_scripts/chroma_benchmark.py`
+- **Parametric**: `benchmark_scripts/chroma_parametric_benchmark.py`
+- **Analysis**: `analysis/plot_chroma_results.py`
 
-### 4. Documentation
+### 4. Automation Scripts
+- **Parametric helper**: `scripts/run_chroma_parametric.sh`
+
+### 5. Documentation
 - **File**: `docs/CHROMA_INTEGRATION_GUIDE.md`
-- **Content**: Complete Workflow, Configuration, Troubleshooting
+- **Content**: Complete Workflow, Configuration, Troubleshooting, Parametric Benchmarking
 
-## Workflow in 5 Steps
+## Workflow in 5 Steps (Single Benchmark)
 
 ```bash
 # 1. Start service
@@ -44,6 +49,43 @@ ls -lh ~/results/
 cat ~/results/chroma_benchmark_results.json
 ```
 
+## Parametric Benchmark Workflow (5-Step Automated)
+
+```bash
+# Fully automated - does everything for you!
+./scripts/run_chroma_parametric.sh
+```
+
+**This script automatically:**
+1. ✅ Starts Chroma service (or uses existing one)
+2. ✅ Submits parametric benchmark job
+3. ✅ Waits for completion (1-4 hours)
+4. ✅ Downloads results from cluster
+5. ✅ Generates all 7 analysis plots
+6. ✅ Opens plots directory
+
+**Manual alternative (if needed):**
+
+```bash
+# 1. Start service
+python main.py --recipe recipes/services/chroma.yaml
+
+# 2. Get service ID
+python main.py --list-running-services
+
+# 3. Submit parametric benchmark
+python main.py --recipe recipes/clients/chroma_parametric.yaml --target-service <SERVICE_ID>
+
+# 4. Wait for completion
+python main.py --status
+
+# 5. Download results
+python main.py --download-results
+
+# 6. Generate plots
+python analysis/plot_chroma_results.py
+```
+
 ## Key Parameters
 
 ### Service (`chroma.yaml`)
@@ -57,7 +99,7 @@ ports:
   - 8000              # Standard Chroma port
 ```
 
-### Client (`chroma_benchmark.yaml`)
+### Single Benchmark Client (`chroma_benchmark.yaml`)
 ```yaml
 parameters:
   num_documents: 1000           # Number of documents
@@ -68,14 +110,32 @@ parameters:
   output_file: "/tmp/chroma_benchmark_results.json"
 ```
 
-## Customization Examples
-
-### Large-Scale Benchmark
+### Parametric Benchmark Client (`chroma_parametric.yaml`)
 ```yaml
 parameters:
-  num_documents: 100000
-  batch_size: 500
-  num_queries: 1000
+  num_documents: "500,1000,2000,5000"        # Document sweep
+  embedding_dimensions: "192,384,768,1536"   # Dimension sweep
+  batch_sizes: "50,100,200,500"              # Batch size sweep
+  num_queries: 1000                          # Fixed queries
+  top_k: 10                                  # Fixed top-k
+```
+
+## Customization Examples
+
+### Faster Parametric Run (Quick Testing)
+```yaml
+parameters:
+  num_documents: "500,1000"           # Fewer points
+  embedding_dimensions: "384,768"     # Fewer dimensions
+  batch_sizes: "100,200"              # Fewer batch sizes
+```
+
+### Comprehensive Parametric Sweep
+```yaml
+parameters:
+  num_documents: "100,500,1000,2000,5000,10000"
+  embedding_dimensions: "128,192,384,768,1536"
+  batch_sizes: "25,50,100,200,500"
 ```
 
 ### More Memory
@@ -92,37 +152,59 @@ resources:
 
 ## Next Steps
 
-1. ✅ Test service: `python main.py --recipe recipes/services/chroma.yaml`
-2. ✅ Test client: After service start with `--target-endpoint http://<hostname>:8000`
-3. 📊 Retrieve results from SLURM logs: `sacct -j <job_id> --format=JobID,State,ExitCode && tail -80 slurm-<job_id>.out`
+1. ✅ Test single benchmark: `python main.py --recipe recipes/services/chroma.yaml`
+2. ✅ Test parametric: `./scripts/run_chroma_parametric.sh`
+3. 📊 View plots: `analysis/plots/*.png`
 4. 🔧 Adjust parameters for your use case
 5. 📈 Scale benchmark
 
-## ⚠️ Important Note About Results
+## ⚠️ Important Notes
 
-**Benchmark results are automatically copied to `~/results/` directory!**
+### About Results Location
 
-How to retrieve them:
-```bash
-ssh login.lxp.lu
+**Single Benchmark:**
+- Automatic copy to `~/results/` on HPC cluster
+- Access via: `ssh login.lxp.lu && ls ~/results/`
 
-# View all results
-ls -lh ~/results/
+**Parametric Benchmark:**
+- Results in `./results/` locally after `--download-results`
+- Plots in `./analysis/plots/` after running `plot_chroma_results.py`
 
-# View latest Chroma benchmark
-cat ~/results/chroma_benchmark_results.json
-```
+### About Parametric Benchmarks
 
-## Comparison with Ollama
+- **Duration**: 1-4 hours depending on parameter ranges
+- **Memory**: 8GB service + 8GB client per run
+- **Parallelization**: Runs sequentially; no concurrent benchmarks
+- **Results**: One JSON file per parametric run
 
-| Aspect | Ollama | Chroma |
-|--------|--------|--------|
-| **Type** | LLM Service | Vector DB |
-| **Port** | 11434 | 8000 |
-| **GPU** | Yes | No |
-| **Memory** | 16GB | 8GB |
-| **Partition** | gpu | cpu |
-| **Use Case** | Text Generation | Vector Search |
+### About Plots
+
+- Plots use dark background for readability
+- Heatmaps are normalized to show relative performance
+- All metrics are automatically calculated from JSON results
+
+## Comparison: Single vs Parametric
+
+| Aspect | Single Benchmark | Parametric |
+|--------|------------------|-----------|
+| **Duration** | 5-10 minutes | 1-4 hours |
+| **Parameters** | Fixed | Swept grid |
+| **Plots** | None | 7 analysis plots |
+| **Scaling Data** | No | Yes |
+| **Quick Test** | ✅ Yes | ❌ No |
+| **Comprehensive Analysis** | ❌ No | ✅ Yes |
+
+## Comparison with Ollama & Redis
+
+| Aspect | Ollama | Chroma | Redis |
+|--------|--------|--------|-------|
+| **Type** | LLM Service | Vector DB | Key-Value DB |
+| **Port** | 11434 | 8000 | 6379 |
+| **GPU** | Yes | No | No |
+| **Memory** | 16GB | 8GB | 4GB |
+| **Partition** | gpu | cpu | cpu |
+| **Use Case** | Text Gen | Vector Search | Caching |
+| **Parametric** | No | Yes ✅ | Yes ✅ |
 
 ## Troubleshooting
 
@@ -147,12 +229,31 @@ ssh login.lxp.lu
 curl http://mel2198:8000/api/v1/heartbeat
 ```
 
+### Parametric Script Fails
+```bash
+# Check Python packages
+pip install chromadb numpy matplotlib requests
+
+# Run with debug output
+bash -x ./scripts/run_chroma_parametric.sh
+
+# Manual parametric
+python benchmark_scripts/chroma_parametric_benchmark.py \
+  --endpoint http://localhost:8000 \
+  --output-file results/debug.json
+```
+
 ### Results Not Found
 ```bash
-# Results are automatically copied to ~/results/
+# For single benchmarks - check cluster
 ssh login.lxp.lu
 ls -lh ~/results/
-cat ~/results/chroma_benchmark_results.json
+
+# For parametric - check locally
+ls -lh results/chroma_parametric_*.json
+
+# Regenerate plots
+python analysis/plot_chroma_results.py --results-dir results/
 ```
 
 ### Out of Memory
@@ -160,6 +261,22 @@ cat ~/results/chroma_benchmark_results.json
 # Increase in chroma.yaml:
 resources:
   mem: "16GB"  # or more
+
+# Or reduce workload in parametric:
+parameters:
+  num_documents: "500,1000"  # Fewer points
+```
+
+### Plots Not Generated
+```bash
+# Install dependencies
+pip install matplotlib numpy
+
+# Manually regenerate
+python analysis/plot_chroma_results.py
+
+# Check if JSON files exist
+ls -lh results/chroma_parametric_*.json
 ```
 
 ## Further Information
@@ -167,8 +284,47 @@ resources:
 - **Complete Guide**: `docs/CHROMA_INTEGRATION_GUIDE.md`
 - **Service Code**: `src/services/chroma.py`
 - **Benchmark Code**: `benchmark_scripts/chroma_benchmark.py`
+- **Parametric Code**: `benchmark_scripts/chroma_parametric_benchmark.py`
+- **Analysis Code**: `analysis/plot_chroma_results.py`
 - **Chroma Docs**: https://docs.trychroma.com/
+- **Redis Comparison**: `docs/REDIS_QUICK_REFERENCE.md`
+
+## File Reference
+
+```
+benchmark_scripts/
+├── chroma_benchmark.py              # Single run
+├── chroma_parametric_benchmark.py   # Parametric sweep
+└── requirements.txt
+
+analysis/
+├── plot_chroma_results.py           # Generate plots
+└── plots/                           # Output directory
+    ├── 1_insertion_throughput_vs_documents.png
+    ├── 2_insertion_throughput_vs_dimension.png
+    ├── 3_insertion_throughput_vs_batch_size.png
+    ├── 4_query_latency_vs_documents.png
+    ├── 5_query_latency_vs_dimension.png
+    ├── 6_heatmap_insertion_throughput.png
+    └── 7_heatmap_query_latency.png
+
+recipes/
+├── services/
+│   └── chroma.yaml                  # Service config
+└── clients/
+    ├── chroma_benchmark.yaml        # Single benchmark
+    └── chroma_parametric.yaml       # Parametric sweep
+
+scripts/
+└── run_chroma_parametric.sh         # Automation script
+
+docs/
+├── CHROMA_INTEGRATION_GUIDE.md      # Complete reference
+└── CHROMA_QUICK_REFERENCE.md        # This file
+```
 
 ---
 
 **Good luck with Chroma! 🚀**
+
+For parametric benchmarking, start with: `./scripts/run_chroma_parametric.sh`

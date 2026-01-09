@@ -188,7 +188,7 @@ class RedisService(Service):
 
 
 class RedisClient(Client):
-    """Redis benchmark client implementation"""
+    """Redis benchmark client implementation (Native Wrapper)"""
     
     @classmethod
     def from_recipe(cls, recipe: Dict[str, Any], config: Dict[str, Any]) -> 'RedisClient':
@@ -239,51 +239,83 @@ class RedisClient(Client):
         return f"{host}:{port}"
     
     def get_container_command(self) -> str:
-        """Override to handle boolean flags properly for Redis benchmark"""
-        cmd_parts = ["apptainer exec"]
+        """
+        Generates a host-level python3 command that runs the wrapper script.
+        The wrapper script then uses Apptainer to call the native redis-benchmark binary.
         
-        # Add environment variables
-        for key, value in self.environment.items():
-            cmd_parts.append(f"--env {key}={value}")
+        Supports two modes:
+        1. Single-run mode (default): runs one benchmark with specific parameters
+        2. Parametric mode: runs comprehensive parameter sweeps
+        """
         
-        # Mount benchmark scripts directory
-        scripts_dir = self.config.get('benchmark', {}).get('scripts_dir', '$HOME/benchmark_scripts')
-        cmd_parts.append(f"--bind {scripts_dir}:/app")
+        # Check if this is a parametric benchmark
+        parametric_mode = self.parameters.get('parametric_mode', False)
         
-        # Resolve container path
-        container_path = self._resolve_container_path()
-        cmd_parts.append(container_path)
-        
-        # Build Python command
-        script_name = self.script_name or "redis_benchmark.py"
-        python_cmd = f"python /app/{script_name}"
-        
-        # Add endpoint parameter
+        # 1. Resolve common arguments
         endpoint = self.resolve_service_endpoint()
-        if endpoint:
-            python_cmd += f" --endpoint={endpoint}"
+        remote_path = self.script_remote_path or "$HOME/benchmark_scripts/"
+        container_image_path = self._resolve_container_path()
+        native_runner = f"apptainer exec {container_image_path} redis-benchmark"
         
-        # Add other parameters, handling booleans specially
-        for key, value in self.parameters.items():
-            if key == 'endpoint':  # Skip endpoint as it's handled above
-                continue
+        if parametric_mode:
+            # PARAMETRIC MODE: Use parametric benchmark script
+            script_name = "redis_parametric_benchmark.py"
+            script_full_path = f"{remote_path.rstrip('/')}/{script_name}"
             
-            cli_key = key.replace('_', '-')
+            # Get parameter ranges
+            client_counts = self.parameters.get('client_counts', '1,10,50,100,200,500')
+            data_sizes = self.parameters.get('data_sizes', '64,256,1024,4096,16384,65536')
+            pipeline_depths = self.parameters.get('pipeline_depths', '1,4,16,64,256')
+            operations = self.parameters.get('operations_per_test', 100000)
+            tests = self.parameters.get('tests', 'set,get,lpush,lpop,sadd,hset,spop,zadd,zpopmin')
             
-            # Handle boolean flags (no value, just the flag)
-            if isinstance(value, bool):
-                if value:  # Only add flag if True
-                    python_cmd += f" --{cli_key}"
-            else:
-                python_cmd += f" --{cli_key}={value}"
+            cmd_parts = [
+                "python3",
+                script_full_path,
+                f"--endpoint {endpoint}",
+                f"--clients '{client_counts}'",
+                f"--data-sizes '{data_sizes}'",
+                f"--pipelines '{pipeline_depths}'",
+                f"--operations {operations}",
+                f"--tests '{tests}'",
+                f"--native-runner '{native_runner}'",
+                "--copy-to-shared",
+                "--shared-dir $HOME/results"
+            ]
+            
+        else:
+            # SINGLE-RUN MODE: Use standard benchmark script
+            script_name = self.script_name or "redis_benchmark.py"
+            script_full_path = f"{remote_path.rstrip('/')}/{script_name}"
+            
+            num_ops = self.parameters.get('num_operations', 100000)
+            clients = self.parameters.get('clients', 50)
+            value_size = self.parameters.get('value_size', 256)
+            pipeline = self.parameters.get('pipeline', 1)
+            tests = self.parameters.get('native_tests', 'set,get')
+            
+            cmd_parts = [
+                "python3",
+                script_full_path,
+                f"--endpoint {endpoint}",
+                f"--num-operations {num_ops}",
+                f"--clients {clients}",
+                f"--value-size {value_size}",
+                f"--pipeline {pipeline}",
+                f"--tests {tests}",
+                f"--native-runner '{native_runner}'",
+                "--copy-to-shared",
+                "--shared-dir $HOME/results"
+            ]
         
-        # Run inside container
-        cmd_parts.extend(["bash", "-c", f'"pip install -q requests && {python_cmd}"'])
-        
+        # Add optional password (both modes)
+        password = self.parameters.get('password')
+        if password:
+            cmd_parts.append(f"--password {password}")
+
         return " ".join(cmd_parts)
 
 
 # Register the Redis implementations with the factory
 JobFactory.register_service('redis', RedisService)
 JobFactory.register_client('redis', RedisClient)
-

@@ -65,6 +65,9 @@ python main.py --recipe recipes/ollama_complete.yaml
 
 # Check system status
 python main.py --status
+
+# Download results from cluster to local machine
+python main.py --download-results
 ```
 
 ## 📋 Usage Examples
@@ -84,6 +87,9 @@ python main.py --recipe recipes/ollama_complete.yaml
 
 # Run client against a service
 python main.py --recipe recipes/clients/ollama_benchmark.yaml --target-service <SERVICE_JOB_ID>
+
+# Download benchmark results from cluster to local machine
+python main.py --download-results
 
 # Stop a running service
 python main.py --stop-service <JOB_ID>
@@ -194,8 +200,19 @@ Clients:
 
 ### Step 5: View Results
 
-Once the client job completes, check the results in the SLURM output file:
+Once the client job completes, you have multiple options for viewing results:
 
+**Option A: Download to Local Machine (Recommended)**
+```bash
+# Download all benchmark results from cluster (from $HOME/results/)
+python main.py --download-results
+
+# Results are saved to ./results/ directory locally
+ls -lh results/
+cat results/redis_benchmark_*.json
+```
+
+**Option B: View Remotely via SSH**
 ```bash
 # SSH to the HPC cluster
 ssh meluxina
@@ -203,8 +220,8 @@ ssh meluxina
 # View the benchmark results (formatted output in SLURM logs)
 cat slurm-<CLIENT_JOB_ID>.out
 
-# Or view detailed JSON results (if saved)
-cat /tmp/ollama_benchmark_results.json
+# Or view detailed JSON results (if saved to $SCRATCH)
+cat $SCRATCH/redis_benchmark_*.json
 ```
 
 The SLURM log file contains formatted output with all benchmark results, making it easy to review performance metrics.
@@ -437,6 +454,8 @@ client:
 - **Ports**: 6379
 - **Resources**: CPU-focused
 - **Features**: Key-value storage, caching, persistence (AOF/RDB)
+- **Benchmarking**: Single-run and parametric sweep modes
+- **Analysis**: Automated plot generation for performance visualization
 - **Documentation**: [Redis Integration Guide](docs/REDIS_INTEGRATION_GUIDE.md), [Quick Reference](docs/REDIS_QUICK_REFERENCE.md)
 
 ## 🧪 Benchmark Clients
@@ -462,10 +481,13 @@ client:
 - **Workloads**: Similarity search, bulk operations
 
 ### Redis Benchmark
-- **Metrics**: Operations per second (SET/GET/DEL), latency distribution, memory usage
-- **Parameters**: Operations count, key/value sizes, persistence testing
-- **Workloads**: Write-heavy, read-heavy, mixed operations
-- **Output**: JSON results with detailed statistics
+- **Modes**: Single-run (quick tests) and Parametric (comprehensive sweeps)
+- **Metrics**: Operations per second (SET/GET/LPUSH/SADD/etc.), latency distribution (P50/P95/P99)
+- **Parameters**: Client counts (1-500), data sizes (64B-64KB), pipeline depths (1-256)
+- **Parametric Sweep**: Automatically tests all parameter combinations
+- **Analysis**: Generates 6 performance plots (throughput, latency, heatmaps, comparisons)
+- **Automation**: One-command workflow via `scripts/run_redis_parametric.sh`
+- **Output**: JSON results with comprehensive performance data
 
 ## 🎛️ Service Management
 
