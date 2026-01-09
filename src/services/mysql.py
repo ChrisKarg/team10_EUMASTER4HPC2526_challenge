@@ -29,6 +29,7 @@ class MySQLService(Service):
         instance.service_def = service_def  # Store for access to init_script
         return instance
     
+    '''
     def get_service_setup_commands(self) -> List[str]:
         """Custom setup commands for MySQL service"""
         data_dir = self.environment.get('MYSQL_DATA_DIR', '/mysql/data')
@@ -93,40 +94,114 @@ class MySQLService(Service):
             "fi",
             ""
         ]
-    
+    '''
+        
+    def get_service_setup_commands(self) -> List[str]:
+        """Custom setup commands for MySQL service"""
+        container_path = self.container.get('image_path', '/mnt/tier2/users/u103300/mysql_latest.sif')
+        init_script = self.service_def.get('init_script', '')
+        
+        commands = [
+            "# MySQL service setup",
+            "echo '=== MYSQL SERVICE SETUP VERSION 3.0 ==='",
+            "echo 'Setting up MySQL service...'",
+            "mkdir -p /mnt/tier2/users/u103300/containers",
+            "",
+            "# Create and prepare MySQL data directory structure",
+            "rm -rf /mnt/tier2/users/u103300/mysql/data/*",
+            "mkdir -p /mnt/tier2/users/u103300/mysql/data",
+            "mkdir -p /mnt/tier2/users/u103300/mysql/tmp",
+            "mkdir -p /mnt/tier2/users/u103300/mysql/run",
+            "mkdir -p /mnt/tier2/users/u103300/mysql/init",
+            "chmod -R 777 /mnt/tier2/users/u103300/mysql",
+            "",
+            "# Initialize MySQL data directory",
+            "echo 'Initializing MySQL data directory...'",
+            f"apptainer exec --bind /mnt/tier2/users/u103300/mysql:/mysql {container_path} mysqld --initialize-insecure --datadir=/mysql/data",
+            "",
+        ]
+        
+        # Add init script creation - handle multi-line properly
+        if init_script:
+            commands.append("# Create init script")
+            commands.append("cat > /mnt/tier2/users/u103300/mysql/init/init.sql << 'EOFEOF'")
+            # Split the init_script by lines and add each line separately
+            for line in init_script.strip().split('\n'):
+                commands.append(line)
+            commands.append("EOFEOF")
+        else:
+            commands.append("echo 'SELECT 1;' > /mnt/tier2/users/u103300/mysql/init/init.sql")
+        
+        commands.extend([
+            "",
+            "# Verify file was created",
+            "echo 'Verifying init script...'",
+            "ls -lah /mnt/tier2/users/u103300/mysql/init/init.sql",
+            "echo 'Init script contents:'",
+            "cat /mnt/tier2/users/u103300/mysql/init/init.sql",
+            "",
+            # Start MySQL temporarily
+            "echo 'Starting MySQL temporarily to run init script...'",
+            f"apptainer exec --bind /mnt/tier2/users/u103300/mysql:/mysql {container_path} mysqld --datadir=/mysql/data --socket=/mysql/run/mysqld.sock --pid-file=/mysql/run/mysqld.pid &",
+            "MYSQL_PID=$!",
+            "",
+            # Wait for MySQL
+            "echo 'Waiting for MySQL to be ready...'",
+            "for i in {1..30}; do",
+            f"  if apptainer exec --bind /mnt/tier2/users/u103300/mysql:/mysql {container_path} mysqladmin --socket=/mysql/run/mysqld.sock ping 2>/dev/null; then",
+            "    echo 'MySQL is ready!'",
+            "    break",
+            "  fi",
+            "  echo \"Attempt $i/30...\"",
+            "  sleep 2",
+            "done",
+            "",
+            # Run init script
+            "echo 'Running init script...'",
+            # FIX: Use the HOST path for the redirection, not the container path
+            f"apptainer exec --bind /mnt/tier2/users/u103300/mysql:/mysql {container_path} mysql -u root --socket=/mysql/run/mysqld.sock < /mnt/tier2/users/u103300/mysql/init/init.sql",
+            "",
+            # Stop temporary MySQL
+            "echo 'Stopping temporary MySQL...'",
+            "kill $MYSQL_PID 2>/dev/null || true",
+            "sleep 5",
+            "",
+            "echo 'MySQL initialization complete!'",
+            ""
+        ])
+        
+        return commands
+    ##
     def get_container_command(self) -> str:
         """Enhanced container command with bind mounts for MySQL"""
         cmd_parts = ["apptainer exec"]
-        
+
         # Add bind mounts if specified in container configuration
         if self.container and 'bind_mounts' in self.container:
             for bind_mount in self.container['bind_mounts']:
                 # Expand $HOME in bind mount paths
                 expanded_mount = bind_mount.replace('$HOME', '${HOME}')
                 cmd_parts.append(f"--bind {expanded_mount}")
-        
+
         # Add environment variables
         for key, value in self.environment.items():
             cmd_parts.append(f"--env {key}={value}")
-        
-        # Add container image with base path
-        container_base_path = self.config.get('containers', {}).get('base_path', '')
-        if container_base_path and not self.container_image.startswith('/'):
-            container_path = f"{container_base_path}/{self.container_image}"
-        else:
-            container_path = self.container_image
+
+        # Resolve container path
+        container_path = self._resolve_container_path()
         cmd_parts.append(container_path)
-        
+
         # Add command and args
         if self.command:
             cmd_parts.append(self.command)
             if self.args:
                 cmd_parts.extend(self.args)
-        
+
         # Run in background for services
         cmd_parts.append("&")
-        
+    
         return " ".join(cmd_parts)
+    
     
     def get_health_check_commands(self) -> List[str]:
         """Enhanced health check for MySQL service"""
@@ -196,6 +271,55 @@ class MySQLClient(Client):
         
         # Return MySQL connection string format (no protocol)
         return f"{host}:{port}"
+    
+    def get_container_command(self) -> str:
+        """Override to use sysbench directly instead of Python wrapper"""
+        # Get parameters
+        host = "${TARGET_SERVICE_HOST}"
+        port = self.target_service.get('port', 3306)
+        threads = self.parameters.get('num_connections', 16)
+        duration = self.parameters.get('transactions_per_client', 300)
+        tables = self.parameters.get('tables', 10)
+        table_size = self.parameters.get('table_size', 100000)
+
+        # Container path
+        container_path = self._resolve_container_path()
+
+        # Build the sysbench commands directly without bash wrapper
+        commands = [
+            f"sysbench oltp_read_write --mysql-host={host} --mysql-port={port} --mysql-user=${{MYSQL_USER}} --mysql-password=${{MYSQL_PASSWORD}} --mysql-db=${{MYSQL_DATABASE}} --tables={tables} --table-size={table_size} prepare",
+            f"sysbench oltp_read_write --mysql-host={host} --mysql-port={port} --mysql-user=${{MYSQL_USER}} --mysql-password=${{MYSQL_PASSWORD}} --mysql-db=${{MYSQL_DATABASE}} --tables={tables} --table-size={table_size} --threads={threads} --time={duration} --report-interval=10 --percentile=95 run > /tmp/sysbench_results.txt 2>&1",
+            f"sysbench oltp_read_write --mysql-host={host} --mysql-port={port} --mysql-user=${{MYSQL_USER}} --mysql-password=${{MYSQL_PASSWORD}} --mysql-db=${{MYSQL_DATABASE}} cleanup"
+        ]
+
+        # Join with && and wrap properly
+        full_cmd = " && ".join(commands)
+
+        # Build final command
+        env_vars = " ".join([f"--env {k}={v}" for k, v in self.environment.items()])
+    
+        return f'apptainer exec {env_vars} {container_path} /bin/bash -c "{full_cmd}"'
+    
+    def get_client_setup_commands(self) -> List[str]:
+        """Override to remove Python script checking"""
+        return [
+            f"echo '=== {self.name.upper()} DEBUG INFO ==='",
+            "echo \"Client node: $(hostname)\"",
+            f"echo \"Target service: {self.get_target_service_name()}\"",
+            "echo '========================='",
+            ""
+        ]
+    
+    def get_result_collection_commands(self) -> List[str]:
+        """Override to collect sysbench results"""
+        return [
+            "",
+            "mkdir -p $SLURM_SUBMIT_DIR/results",
+            "cp /tmp/sysbench_results.txt $SLURM_SUBMIT_DIR/results/ 2>/dev/null || true",
+            f"echo '{self.name} completed'",
+            ""
+        ]
+    
 
 
 # Register the MySQL implementations with the factory

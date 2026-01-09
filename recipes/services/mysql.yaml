@@ -47,8 +47,12 @@ service:
     
   # Custom initialization script to set up remote access
   init_script: |
-    CREATE USER IF NOT EXISTS 'benchmark_user'@'%' IDENTIFIED BY 'benchmark_pass';
+    CREATE USER IF NOT EXISTS 'benchmark_user'@'%' IDENTIFIED WITH mysql_native_password BY 'benchmark_pass';
+    CREATE USER IF NOT EXISTS 'benchmark_user'@'localhost' IDENTIFIED WITH mysql_native_password BY 'benchmark_pass';
+    CREATE DATABASE IF NOT EXISTS benchmark_db;
     GRANT ALL PRIVILEGES ON benchmark_db.* TO 'benchmark_user'@'%';
+    GRANT ALL PRIVILEGES ON benchmark_db.* TO 'benchmark_user'@'localhost';
+    ALTER USER 'root'@'localhost' IDENTIFIED BY 'mysecretpassword';
     FLUSH PRIVILEGES;
     
   # Exposed ports (accessible from other containers on same node)
