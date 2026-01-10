@@ -19,7 +19,7 @@ service:
 
   # Resource requirements (SLURM job configuration)
   resources:
-    time: "00:30:00"
+    time: "02:00:00"
     qos: default
     partition: gpu
     nodes: 1

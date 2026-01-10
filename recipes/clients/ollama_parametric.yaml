@@ -1,0 +1,61 @@
+# Ollama Parametric Benchmark Client Configuration
+# This recipe runs comprehensive parameter sweeps across multiple configurations
+# to collect performance data for analysis and plotting
+
+client:
+  name: ollama_parametric_benchmark
+  description: Ollama Parametric Benchmark Suite - Full Parameter Sweep
+  container_image: benchmark_client.sif
+  duration: 7200  # 2 hours for comprehensive sweep
+
+  # Container configuration
+  container:
+    docker_source: "docker://python:3.11-slim"
+    image_path: "$HOME/containers/ciao/benchmark_client.sif"
+
+  # Resource requirements (SLURM job configuration)
+  resources:
+    partition: gpu  # Use GPU partition for Ollama
+    time: "02:30:00"  # 2.5 hours
+    qos: default
+    nodes: 1
+    ntasks: 1
+    ntasks_per_node: 1
+    mem: "8GB"  # More memory for LLM inference and result collection
+
+  # Environment variables
+  environment:
+    OLLAMA_TLS_SKIP_VERIFY: "1"
+    BENCHMARK_TYPE: "ollama_parametric"
+    BENCHMARK_MODE: "parametric"
+
+  # Parametric benchmark configuration
+  parameters:
+    # Parameter sweep ranges (comma-separated)
+    concurrent_requests: "1,2,5,10,20"
+    prompt_lengths: "50,100,200,500"  # tokens
+    max_tokens: "50,100,200,500"  # max output tokens
+    
+    # Test configuration
+    operations_per_test: 20  # LLM requests are slower, so fewer operations
+    model: "llama2"
+    
+    # Orchestrator settings
+    wait_for_service: 120
+
+  # Output configuration
+  output:
+    file: "/tmp/ollama_parametric_results.json"
+    shared_dir: "$SCRATCH"
+
+  # Target service configuration
+  target_service:
+    name: ollama
+    port: 11434
+    health_check_endpoint: "/api/tags"
+
+  # Script configuration
+  script:
+    name: "ollama_parametric_benchmark.py"
+    local_path: "benchmark_scripts/"
+    remote_path: "$HOME/benchmark_scripts/"
