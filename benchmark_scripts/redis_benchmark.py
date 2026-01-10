@@ -80,7 +80,15 @@ class RedisNativeBenchmark:
 
     @staticmethod
     def _parse_csv_output(stdout: str) -> Dict[str, Any]:
-        """Parse redis-benchmark --csv output into a structured dict."""
+        """Parse redis-benchmark --csv output into a structured dict.
+        
+        CSV format: "test","rps","avg_latency_ms","min_latency_ms","p50_latency_ms","p95_latency_ms","p99_latency_ms","max_latency_ms"
+        Data rows: "PING_INLINE","35816.62","1.131","0.024","1.031","2.247","2.455","2.783"
+        
+        Parsed structure:
+        - requests_per_second: rps value (first numeric column)
+        - metrics: [avg, min, p50, p95, p99, max] (6 latency values)
+        """
         results: Dict[str, Any] = {"tests": {}}
         lines = [line.strip() for line in stdout.splitlines() if line.strip()]
         
@@ -98,23 +106,35 @@ class RedisNativeBenchmark:
                 continue
                 
             test_name = parts[0]
+            
+            # Skip header row (test_name == "test")
+            if test_name.lower() == "test":
+                continue
+            
             test_data: Dict[str, Any] = {}
             
-            # Try to parse metrics
+            # Parse metrics: parts[1] = rps, parts[2:8] = 6 latency metrics
             metrics: List[float] = []
             for value in parts[1:]:
-            try:
+                try:
                     metrics.append(float(value))
-            except ValueError:
-                    test_data.setdefault("extra", []).append(value)
+                except ValueError:
+                    # Non-numeric values (shouldn't happen in data rows, but handle gracefully)
+                    pass
             
-            if metrics:
-                # First metric is requests per second
+            if len(metrics) >= 7:
+                # First metric is requests per second (rps)
+                test_data["requests_per_second"] = metrics[0]
+                # Remaining 6 metrics are: avg, min, p50, p95, p99, max latency (in ms)
+                test_data["metrics"] = metrics[1:7]
+            elif len(metrics) > 0:
+                # Fallback: if we have some metrics but not all, still extract what we can
                 test_data["requests_per_second"] = metrics[0]
                 if len(metrics) > 1:
                     test_data["metrics"] = metrics[1:]
             
-            results["tests"][test_name] = test_data
+            if test_data:  # Only add if we have valid data
+                results["tests"][test_name] = test_data
                 
         return results
 
@@ -241,17 +261,17 @@ def main():
     print("-" * 40)
 
     # Construct final JSON payload
-        payload = {
-            'timestamp': datetime.now().isoformat(),
-            'config': {
-                'endpoint': args.endpoint,
+    payload = {
+        'timestamp': datetime.now().isoformat(),
+        'config': {
+            'endpoint': args.endpoint,
             'requests': args.num_operations,
-                'clients': args.clients,
+            'clients': args.clients,
             'payload_size': args.value_size,
             'pipeline': args.pipeline
-            },
+        },
         'results': results
-        }
+    }
         
     # Save to JSON
     try:
