@@ -1,0 +1,210 @@
+/* Extra CSS for MkDocs Material Theme */
+
+/* Primary button styling */
+.md-button {
+    margin: 0.5rem 0;
+}
+
+.md-button--primary {
+    background-color: #2563eb;
+    border-color: #2563eb;
+    color: white;
+}
+
+.md-button--primary:hover {
+    background-color: #1d4ed8;
+    border-color: #1d4ed8;
+}
+
+/* Grid cards for homepage */
+.grid.cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1rem;
+    margin: 2rem 0;
+}
+
+.grid.cards > div {
+    border: 1px solid var(--md-default-fg-color--lightest);
+    border-radius: 0.4rem;
+    padding: 1.5rem;
+    transition: box-shadow 0.2s, transform 0.2s;
+}
+
+.grid.cards > div:hover {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    transform: translateY(-2px);
+}
+
+/* Code block enhancements */
+.highlight {
+    margin: 1rem 0;
+}
+
+/* Admonition custom colors */
+.admonition.tip {
+    border-left-color: #00bcd4;
+}
+
+.admonition.warning {
+    border-left-color: #ff9800;
+}
+
+.admonition.info {
+    border-left-color: #2196f3;
+}
+
+.admonition.example {
+    border-left-color: #9c27b0;
+}
+
+/* Feature list styling */
+.feature-list {
+    list-style: none;
+    padding-left: 0;
+}
+
+.feature-list li {
+    padding: 0.5rem 0;
+    padding-left: 1.5rem;
+    position: relative;
+}
+
+.feature-list li::before {
+    content: "✓";
+    position: absolute;
+    left: 0;
+    color: #22c55e;
+    font-weight: bold;
+}
+
+/* Service cards */
+.service-card {
+    background: linear-gradient(135deg, var(--md-primary-fg-color--light), var(--md-primary-fg-color));
+    color: white;
+    padding: 1rem;
+    border-radius: 0.5rem;
+    margin: 0.5rem 0;
+}
+
+/* Terminal output styling */
+.terminal-output {
+    background-color: #1e1e1e;
+    color: #d4d4d4;
+    padding: 1rem;
+    border-radius: 0.4rem;
+    font-family: 'Fira Code', 'Consolas', monospace;
+    font-size: 0.9rem;
+    overflow-x: auto;
+}
+
+/* Status badges */
+.status-badge {
+    display: inline-block;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.status-badge.running {
+    background-color: #22c55e;
+    color: white;
+}
+
+.status-badge.pending {
+    background-color: #f59e0b;
+    color: white;
+}
+
+.status-badge.stopped {
+    background-color: #ef4444;
+    color: white;
+}
+
+/* ===========================================
+   Mermaid Diagram Dark Mode Fixes
+   =========================================== */
+
+/* Dark mode - Force dark text on light backgrounds in diagrams */
+[data-md-color-scheme="slate"] .mermaid {
+    --mermaid-font-family: var(--md-text-font-family);
+}
+
+/* Dark mode node text should be dark */
+[data-md-color-scheme="slate"] .mermaid .node rect,
+[data-md-color-scheme="slate"] .mermaid .node circle,
+[data-md-color-scheme="slate"] .mermaid .node ellipse,
+[data-md-color-scheme="slate"] .mermaid .node polygon,
+[data-md-color-scheme="slate"] .mermaid .node path {
+    stroke: #666 !important;
+}
+
+[data-md-color-scheme="slate"] .mermaid .nodeLabel,
+[data-md-color-scheme="slate"] .mermaid .label,
+[data-md-color-scheme="slate"] .mermaid .edgeLabel {
+    color: #1a1a1a !important;
+    fill: #1a1a1a !important;
+}
+
+/* Ensure text in subgraphs is readable */
+[data-md-color-scheme="slate"] .mermaid .cluster-label .nodeLabel {
+    color: #e0e0e0 !important;
+    fill: #e0e0e0 !important;
+}
+
+/* Subgraph backgrounds should be darker in dark mode */
+[data-md-color-scheme="slate"] .mermaid .cluster rect {
+    fill: #2d3748 !important;
+    stroke: #4a5568 !important;
+}
+
+/* Edge/arrow labels */
+[data-md-color-scheme="slate"] .mermaid .edgeLabel rect {
+    fill: #1e1e1e !important;
+}
+
+[data-md-color-scheme="slate"] .mermaid .edgeLabel span {
+    color: #e0e0e0 !important;
+}
+
+/* Arrow colors */
+[data-md-color-scheme="slate"] .mermaid .marker {
+    fill: #888 !important;
+    stroke: #888 !important;
+}
+
+[data-md-color-scheme="slate"] .mermaid .flowchart-link {
+    stroke: #888 !important;
+}
+
+/* Class diagram specific */
+[data-md-color-scheme="slate"] .mermaid .classLabel .label {
+    fill: #1a1a1a !important;
+}
+
+/* Sequence diagram */
+[data-md-color-scheme="slate"] .mermaid .actor {
+    fill: #4a5568 !important;
+}
+
+[data-md-color-scheme="slate"] .mermaid .actor-line {
+    stroke: #666 !important;
+}
+
+[data-md-color-scheme="slate"] .mermaid text.actor {
+    fill: #e0e0e0 !important;
+}
+
+/* State diagram */
+[data-md-color-scheme="slate"] .mermaid .stateLabel .label {
+    fill: #1a1a1a !important;
+}
+
+/* Light mode - ensure good contrast too */
+[data-md-color-scheme="default"] .mermaid .nodeLabel,
+[data-md-color-scheme="default"] .mermaid .label {
+    color: #1a1a1a !important;
+    fill: #1a1a1a !important;
+}
