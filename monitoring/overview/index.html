@@ -1115,24 +1115,26 @@
 <h1 id="monitoring-overview">Monitoring Overview<a class="headerlink" href="#monitoring-overview" title="Permanent link">¶</a></h1>
 <p>The orchestrator provides comprehensive monitoring through Prometheus and Grafana, collecting real-time container metrics via cAdvisor.</p>
 <h2 id="architecture">Architecture<a class="headerlink" href="#architecture" title="Permanent link">¶</a></h2>
-<pre class="mermaid"><code>graph TB
+<pre class="mermaid"><code>flowchart LR
     subgraph Services["Deployed Services"]
-        Ollama["Ollama&lt;br/&gt;:11434"]
-        Redis["Redis&lt;br/&gt;:6379"]
-        Chroma["Chroma&lt;br/&gt;:8000"]
-        MySQL["MySQL&lt;br/&gt;:3306"]
+        direction TB
+        Ollama[Ollama]
+        Redis[Redis]
+        Chroma[Chroma]
+        MySQL[MySQL]
     end
 
-    subgraph Monitoring["Monitoring Sidecars"]
-        cA1["cAdvisor&lt;br/&gt;:8080"]
-        cA2["cAdvisor&lt;br/&gt;:8080"]
-        cA3["cAdvisor&lt;br/&gt;:8080"]
-        cA4["cAdvisor&lt;br/&gt;:8080"]
+    subgraph Sidecars["Monitoring Sidecars"]
+        direction TB
+        cA1[cAdvisor]
+        cA2[cAdvisor]
+        cA3[cAdvisor]
+        cA4[cAdvisor]
     end
 
     subgraph Stack["Monitoring Stack"]
-        Prometheus["Prometheus&lt;br/&gt;:9090"]
-        Grafana["Grafana&lt;br/&gt;:3000"]
+        direction LR
+        Prometheus[Prometheus] --&gt; Grafana[Grafana]
     end
 
     Ollama --&gt; cA1
@@ -1145,12 +1147,10 @@
     cA3 --&gt; Prometheus
     cA4 --&gt; Prometheus
 
-    Prometheus --&gt; Grafana
-
     style Ollama fill:#0288D1,color:#fff
     style Redis fill:#D32F2F,color:#fff
     style Chroma fill:#689F38,color:#fff
-    style MySQL fill:#1976D2,color:#fff
+    style MySQL fill:#1565C0,color:#fff
     style cA1 fill:#F57C00,color:#fff
     style cA2 fill:#F57C00,color:#fff
     style cA3 fill:#F57C00,color:#fff

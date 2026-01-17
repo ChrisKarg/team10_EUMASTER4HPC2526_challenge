@@ -1072,75 +1072,61 @@
 <h2 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">¶</a></h2>
 <p>The HPC AI Benchmarking Orchestrator uses a <strong>modular architecture</strong> designed for flexibility, extensibility, and seamless HPC integration. The system orchestrates containerized AI workloads through SLURM, providing automated deployment, monitoring, and benchmarking capabilities.</p>
 <h2 id="high-level-architecture">High-Level Architecture<a class="headerlink" href="#high-level-architecture" title="Permanent link">¶</a></h2>
-<pre class="mermaid"><code>graph TB
+<pre class="mermaid"><code>flowchart TB
     subgraph Local["Local Machine"]
-        CLI["CLI Interface&lt;br/&gt;main.py"]
-        Orch["BenchmarkOrchestrator"]
-        Config["config.yaml"]
-        Recipes["YAML Recipes"]
+        direction LR
+        CLI[main.py] ~~~ Config[config.yaml] ~~~ Recipes[Recipes]
     end
 
     subgraph Framework["Core Framework"]
-        Servers["ServersModule&lt;br/&gt;Service lifecycle"]
-        Clients["ClientsModule&lt;br/&gt;Benchmark execution"]
-        Monitors["MonitorsModule&lt;br/&gt;Metrics collection"]
-        Factory["JobFactory&lt;br/&gt;Job creation"]
-        SSH["SSHClient&lt;br/&gt;Remote operations"]
+        direction TB
+        Orch[Orchestrator]
+        subgraph Modules["Modules"]
+            direction LR
+            Srv[Servers] ~~~ Cli[Clients] ~~~ Mon[Monitors]
+        end
+        Orch --&gt; Modules
+        Modules --&gt; Factory[Factory]
+        Factory --&gt; SSH[SSH]
     end
 
-    subgraph MeluXina["MeluXina HPC"]
-        SLURM["SLURM&lt;br/&gt;Workload Manager"]
-        Compute["Compute Nodes&lt;br/&gt;GPU / CPU"]
-        Containers["Apptainer&lt;br/&gt;Containers"]
+    subgraph HPC["MeluXina HPC"]
+        direction LR
+        SLURM[SLURM] --&gt; Compute[Compute] --&gt; Containers[Apptainer]
     end
 
     subgraph Services["Deployed Services"]
-        Ollama["Ollama LLM"]
-        Redis["Redis"]
-        Chroma["Chroma"]
-        MySQL["MySQL"]
+        direction LR
+        Ollama[Ollama] ~~~ Redis[Redis] ~~~ Chroma[Chroma] ~~~ MySQL[MySQL]
     end
 
     subgraph Monitoring["Monitoring Stack"]
-        cAdvisor["cAdvisor"]
-        Prometheus["Prometheus"]
-        Grafana["Grafana"]
+        direction LR
+        cAdvisor[cAdvisor] --&gt; Prometheus[Prometheus] --&gt; Grafana[Grafana]
     end
 
-    CLI --&gt; Orch
-    Config --&gt; Orch
-    Recipes --&gt; Orch
-    Orch --&gt; Servers
-    Orch --&gt; Clients
-    Orch --&gt; Monitors
-    Servers --&gt; Factory
-    Clients --&gt; Factory
-    Factory --&gt; SSH
-    SSH --&gt; SLURM
-    SLURM --&gt; Compute
-    Compute --&gt; Containers
-    Containers --&gt; Services
-    Containers --&gt; cAdvisor
-    cAdvisor --&gt; Prometheus
-    Prometheus --&gt; Grafana
+    Local --&gt; Framework
+    Framework --&gt; HPC
+    HPC --&gt; Services
+    HPC --&gt; Monitoring
 
     style CLI fill:#1976D2,color:#fff
-    style Orch fill:#388E3C,color:#fff
     style Config fill:#1976D2,color:#fff
     style Recipes fill:#1976D2,color:#fff
+    style Orch fill:#388E3C,color:#fff
+    style Srv fill:#388E3C,color:#fff
+    style Cli fill:#388E3C,color:#fff
+    style Mon fill:#388E3C,color:#fff
     style Factory fill:#F57C00,color:#fff
-    style SLURM fill:#7B1FA2,color:#fff
-    style Servers fill:#388E3C,color:#fff
-    style Clients fill:#388E3C,color:#fff
-    style Monitors fill:#388E3C,color:#fff
     style SSH fill:#455A64,color:#fff
+    style SLURM fill:#7B1FA2,color:#fff
     style Compute fill:#7B1FA2,color:#fff
     style Containers fill:#7B1FA2,color:#fff
     style Ollama fill:#0288D1,color:#fff
     style Redis fill:#D32F2F,color:#fff
     style Chroma fill:#689F38,color:#fff
-    style MySQL fill:#1976D2,color:#fff
-    style cAdvisor fill:#F57C00,color:#fff
+    style MySQL fill:#1565C0,color:#fff
+    style cAdvisor fill:#7B1FA2,color:#fff
     style Prometheus fill:#E64A19,color:#fff
     style Grafana fill:#F57C00,color:#fff</code></pre>
 <h2 id="core-components">Core Components<a class="headerlink" href="#core-components" title="Permanent link">¶</a></h2>

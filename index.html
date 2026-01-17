@@ -868,71 +868,60 @@
 <h2 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">¶</a></h2>
 <p>A modular Python orchestrator for running containerized AI benchmarking workloads on HPC clusters via SLURM. This framework enables automated deployment, benchmarking, and monitoring of AI services including LLM inference servers, vector databases, in-memory stores, and relational databases on the <strong>MeluXina supercomputer</strong>.</p>
 <h2 id="architecture">Architecture<a class="headerlink" href="#architecture" title="Permanent link">¶</a></h2>
-<pre class="mermaid"><code>graph TB
+<pre class="mermaid"><code>flowchart TB
     subgraph Local["Local Machine"]
-        CLI["CLI Interface&lt;br/&gt;main.py"]
-        Config["config.yaml"]
+        direction LR
+        CLI[main.py] ~~~ Config[config.yaml]
     end
 
     subgraph Framework["Orchestrator Framework"]
-        Orchestrator["BenchmarkOrchestrator"]
-        Servers["ServersModule"]
-        Clients["ClientsModule"]
-        Monitors["MonitorsModule"]
-        SSH["SSHClient"]
+        direction TB
+        Orch[Orchestrator]
+        subgraph Modules["Modules"]
+            direction LR
+            Srv[Servers] ~~~ Cli[Clients] ~~~ Mon[Monitors]
+        end
+        Orch --&gt; Modules
+        Modules --&gt; SSH[SSHClient]
     end
 
     subgraph HPC["MeluXina HPC"]
-        SLURM["SLURM Scheduler"]
-        Compute["Compute Nodes"]
-        Containers["Apptainer Containers"]
+        direction TB
+        SLURM[SLURM] --&gt; Compute[Compute] --&gt; Containers[Apptainer]
     end
 
     subgraph Services["Deployed Services"]
-        Ollama["Ollama&lt;br/&gt;:11434"]
-        Redis["Redis&lt;br/&gt;:6379"]
-        Chroma["Chroma&lt;br/&gt;:8000"]
-        MySQL["MySQL&lt;br/&gt;:3306"]
+        direction LR
+        Ollama[Ollama] ~~~ Redis[Redis] ~~~ Chroma[Chroma] ~~~ MySQL[MySQL]
     end
 
     subgraph Monitoring["Monitoring Stack"]
-        Prometheus["Prometheus&lt;br/&gt;:9090"]
-        Grafana["Grafana&lt;br/&gt;:3000"]
-        cAdvisor["cAdvisor&lt;br/&gt;:8080"]
+        direction LR
+        cAdvisor[cAdvisor] --&gt; Prometheus[Prometheus] --&gt; Grafana[Grafana]
     end
 
-    CLI --&gt; Orchestrator
-    Config --&gt; Orchestrator
-    Orchestrator --&gt; Servers
-    Orchestrator --&gt; Clients
-    Orchestrator --&gt; Monitors
-    Servers --&gt; SSH
-    Clients --&gt; SSH
-    SSH --&gt; SLURM
-    SLURM --&gt; Compute
-    Compute --&gt; Containers
-    Containers --&gt; Services
-    Containers --&gt; Monitoring
-    cAdvisor --&gt; Prometheus
-    Prometheus --&gt; Grafana
+    Local --&gt; Framework
+    Framework --&gt; HPC
+    HPC --&gt; Services
+    HPC --&gt; Monitoring
 
     style CLI fill:#1976D2,color:#fff
-    style Orchestrator fill:#388E3C,color:#fff
-    style SLURM fill:#F57C00,color:#fff
-    style Grafana fill:#7B1FA2,color:#fff
     style Config fill:#1976D2,color:#fff
-    style Servers fill:#388E3C,color:#fff
-    style Clients fill:#388E3C,color:#fff
-    style Monitors fill:#388E3C,color:#fff
-    style SSH fill:#388E3C,color:#fff
+    style Orch fill:#388E3C,color:#fff
+    style Srv fill:#388E3C,color:#fff
+    style Cli fill:#388E3C,color:#fff
+    style Mon fill:#388E3C,color:#fff
+    style SSH fill:#455A64,color:#fff
+    style SLURM fill:#F57C00,color:#fff
     style Compute fill:#F57C00,color:#fff
     style Containers fill:#F57C00,color:#fff
-    style Prometheus fill:#7B1FA2,color:#fff
-    style cAdvisor fill:#7B1FA2,color:#fff
     style Ollama fill:#0288D1,color:#fff
     style Redis fill:#D32F2F,color:#fff
     style Chroma fill:#689F38,color:#fff
-    style MySQL fill:#1976D2,color:#fff</code></pre>
+    style MySQL fill:#1565C0,color:#fff
+    style cAdvisor fill:#7B1FA2,color:#fff
+    style Prometheus fill:#E64A19,color:#fff
+    style Grafana fill:#F57C00,color:#fff</code></pre>
 <h2 id="supported-services">Supported Services<a class="headerlink" href="#supported-services" title="Permanent link">¶</a></h2>
 <table>
 <thead>
