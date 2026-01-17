@@ -1,0 +1,52 @@
+# MySQL Service Configuration with cAdvisor Monitoring
+service:
+  name: mysql
+  description: MySQL database service with cAdvisor for Prometheus monitoring
+  container_image: mysql_latest.sif
+  command: mysqld
+  args: [
+    "--datadir=/mysql/data",
+    "--socket=/mysql/run/mysqld.sock",
+    "--pid-file=/mysql/run/mysqld.pid",
+    "--tmpdir=/mysql/tmp",
+    "--skip-networking=0",
+    "--bind-address=0.0.0.0",
+    "--user=mysql"
+  ]
+
+  # Enable cAdvisor for container monitoring
+  enable_cadvisor: true
+  cadvisor_port: 8080
+
+  # Container configuration
+  container:
+    docker_source: "docker://mysql:8.0"
+    image_path: "$HOME/containers/mysql_latest.sif"
+
+  # Resource requirements
+  resources:
+    time: "02:00:00"
+    qos: default
+    partition: cpu
+    nodes: 1
+    ntasks: 1
+    ntasks_per_node: 1
+    mem: "4GB"
+
+  # Environment variables
+  environment:
+    MYSQL_ROOT_PASSWORD: "mysecretpassword"
+    MYSQL_DATABASE: "benchmark_db"
+    MYSQL_USER: "benchmark_user"
+    MYSQL_PASSWORD: "benchmark_pass"
+    MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+
+  # Exposed ports
+  ports:
+    - 3306
+
+  # Health check configuration
+  health_check:
+    timeout: 30
+    retries: 5
+    interval: 10

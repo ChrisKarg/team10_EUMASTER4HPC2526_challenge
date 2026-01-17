@@ -1,0 +1,47 @@
+# Chroma Vector Database Service Configuration with cAdvisor Monitoring
+service:
+  name: chroma
+  description: Chroma vector database service with cAdvisor for Prometheus monitoring
+  container_image: chroma_latest.sif
+  command: chroma
+  args: ["run", "--host", "0.0.0.0", "--port", "8000"]
+
+  # Enable cAdvisor for container monitoring
+  enable_cadvisor: true
+  cadvisor_port: 8080
+
+  # Container configuration
+  container:
+    docker_source: "docker://chromadb/chroma:latest"
+    image_path: "$HOME/containers/chroma_latest.sif"
+
+  # Resource requirements (SLURM job configuration)
+  resources:
+    time: "02:00:00"
+    qos: default
+    partition: cpu
+    nodes: 1
+    ntasks: 1
+    ntasks_per_node: 1
+    mem: "8GB"
+
+  # Environment variables for Chroma configuration
+  environment:
+    CHROMA_HOST: "0.0.0.0"
+    CHROMA_PORT: "8000"
+    CHROMA_SERVER_AUTH_PROVIDER: "chromadb.auth.token.TokenAuthServerProvider"
+    ALLOW_RESET: "true"
+    IS_PERSISTENT: "true"
+    PERSIST_DIRECTORY: "/chroma/data"
+    ANONYMIZED_TELEMETRY: "false"
+    
+  # Exposed ports
+  ports:
+    - 8000
+
+  # Health check configuration
+  health_check:
+    endpoint: "http://localhost:8000/api/v1/heartbeat"
+    timeout: 30
+    retries: 5
+    interval: 10

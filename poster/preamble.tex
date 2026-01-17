@@ -1,0 +1,162 @@
+% =========================
+% preamble.tex (PROJECT POSTER DESIGN SYSTEM)
+% =========================
+
+% Language + math
+\usepackage[english]{babel}
+\usepackage{latexsym,amssymb,amsmath,amsfonts}
+\usepackage{bm}
+
+% Layout + multi-columns
+\usepackage{geometry}
+\usepackage{multicol}
+\usepackage{paralist}
+\usepackage{enumitem}
+
+% Graphics
+\usepackage[pdftex]{graphicx}
+\DeclareGraphicsExtensions{.jpg,.pdf,.pdftex,.png}
+\graphicspath{{./figures/}}
+
+% Links
+\usepackage[colorlinks=true,linkcolor=PosterBlue,urlcolor=black,citecolor=PosterBlue]{hyperref}
+
+% Tables
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\newcolumntype{C}{>{\centering\arraybackslash}X}
+
+% TikZ / PGFplots (optional diagrams)
+\usepackage{tikz}
+\usepackage{pgfplots}
+\usetikzlibrary{shapes,calc,backgrounds,fit,patterns,shadings,shadows}
+\pgfplotsset{compat=1.18}
+
+% Icons
+\usepackage{pifont}
+\usepackage{fontawesome}
+
+% Boxes
+\usepackage{tcolorbox}
+\tcbuselibrary{skins,breakable}
+
+% Caption
+\usepackage{caption}
+\usepackage{subfig}
+\usepackage{float}
+\usepackage{wrapfig}
+
+% -------------------------------------------------
+% POSTER PAGE GEOMETRY (A0-ish: 420x594mm)
+% -------------------------------------------------
+\setlength{\pdfpageheight}{594mm}
+\setlength{\pdfpagewidth}{420mm}
+\setlength{\paperheight}{594mm}
+\setlength{\paperwidth}{420mm}
+
+\setlength{\voffset}{-.5in}
+\setlength{\hoffset}{-0.5in}
+\setlength{\evensidemargin}{5mm}
+\setlength{\oddsidemargin}{5mm}
+\setlength{\topmargin}{0mm}
+\setlength{\headheight}{0mm}
+\setlength{\headsep}{0mm}
+\setlength{\textheight}{624mm}
+\setlength{\textwidth}{410mm}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{1.2ex}
+
+\setlength{\columnsep}{1.0cm}
+\setlength{\columnseprule}{0.2pt}
+\setlength{\multicolsep}{0cm}
+
+\pagestyle{empty}
+
+% -------------------------------------------------
+% DESIGN SYSTEM: COLORS + TYPOGRAPHY
+% -------------------------------------------------
+\definecolor{PosterBlack}{HTML}{111111}
+\definecolor{PosterGray}{HTML}{F3F4F6}
+\definecolor{PosterBlue}{HTML}{1D4ED8}
+\definecolor{PosterTeal}{HTML}{0F766E}
+\definecolor{PosterOrange}{HTML}{F59E0B}
+\definecolor{PosterRed}{HTML}{DC2626}
+\definecolor{PosterPurple}{HTML}{6D28D9}
+
+% One font command for body text (tune sizes here)
+\newcommand{\posterfont}{\rmfamily\fontsize{22pt}{26pt}\selectfont}
+\newcommand{\titlefont}[1]{\fontencoding{T1}\fontfamily{\rmdefault}\selectfont\bfseries\fontsize{44pt}{48pt}\selectfont #1}
+\newcommand{\subtitlefont}[1]{\fontencoding{T1}\fontfamily{\rmdefault}\selectfont\fontsize{28pt}{32pt}\selectfont #1}
+
+% -------------------------------------------------
+% DESIGN SYSTEM: HEADER + SECTION BAR
+% -------------------------------------------------
+\newlength{\boxwidth}
+\setlength{\boxwidth}{0.975\textwidth}
+
+\newcommand{\newpart}[1]{%
+  \vspace{0.3cm}%
+  \colorbox{PosterBlack}{%
+    \makebox[\columnwidth]{%
+      \rule[-1.0ex]{0pt}{3.2ex}%
+      \Large\bfseries\color{white}\hspace{0.6em}#1\hspace{0.6em}%
+    }%
+  }%
+  \vspace{0.35cm}%
+}
+
+% -------------------------------------------------
+% DESIGN SYSTEM: BLOCKS (consistent look)
+% -------------------------------------------------
+\newtcolorbox{infoblock}[2][]{%
+  enhanced,
+  breakable,
+  colback=PosterGray,
+  colframe=PosterBlack!20,
+  boxrule=1.0pt,
+  arc=2mm,
+  left=6mm,right=6mm,top=4mm,bottom=4mm,
+  title={\large\bfseries #2},
+  coltitle=PosterBlack,
+  fonttitle=\large\bfseries,
+  attach title to upper,
+  #1
+}
+
+\newtcolorbox{resultblock}[2][]{%
+  enhanced,
+  breakable,
+  colback=PosterBlue!6,
+  colframe=PosterBlue!70,
+  boxrule=1.2pt,
+  arc=2mm,
+  left=6mm,right=6mm,top=4mm,bottom=4mm,
+  title={\large\bfseries #2},
+  coltitle=PosterBlack,
+  fonttitle=\large\bfseries,
+  attach title to upper,
+  #1
+}
+
+\newtcolorbox{highlightblock}[2][]{%
+  enhanced,
+  breakable,
+  colback=PosterTeal!8,
+  colframe=PosterTeal!70,
+  boxrule=1.2pt,
+  arc=2mm,
+  left=6mm,right=6mm,top=4mm,bottom=4mm,
+  title={\large\bfseries #2},
+  coltitle=PosterBlack,
+  fonttitle=\large\bfseries,
+  attach title to upper,
+  #1
+}
+
+% Tight itemize
+\newenvironment{thinitemize}{\begin{itemize}[leftmargin=1.1em,itemsep=3pt,topsep=2pt]}{\end{itemize}}
+
+% Tiny icons
+\newcommand{\Grarrow}{\item[\color{PosterTeal}\ding{220}]}

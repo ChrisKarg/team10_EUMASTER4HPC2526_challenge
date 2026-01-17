@@ -8,3 +8,13 @@ venv/
 .venv/
 config.yaml
 results/
+
+# macOS
+.DS_Store
+
+# MkDocs build output
+docs-site/
+site/
+
+# Runtime generated files
+.service_ids

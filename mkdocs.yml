@@ -1,0 +1,118 @@
+site_name: HPC AI Benchmarking Orchestrator
+site_description: A modular Python orchestrator for containerized AI benchmarking on HPC clusters via SLURM
+site_author: EUMaster4HPC Challenge Team 10
+repo_url: https://github.com/ChrisKarg/team10_EUMASTER4HPC2526_challenge
+repo_name: team10_EUMASTER4HPC2526_challenge
+
+docs_dir: docs-src
+site_dir: docs-site
+
+theme:
+  name: material
+  palette:
+    # Light mode
+    - scheme: default
+      primary: blue
+      accent: cyan
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    # Dark mode
+    - scheme: slate
+      primary: blue
+      accent: cyan
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.path
+    - navigation.top
+    - navigation.indexes
+    - search.suggest
+    - search.highlight
+    - content.tabs.link
+    - content.code.annotation
+    - content.code.copy
+  language: en
+  icon:
+    repo: fontawesome/brands/github
+
+plugins:
+  - search
+  - mermaid2
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - admonition
+  - pymdownx.details
+  - pymdownx.mark
+  - attr_list
+  - md_in_html
+  - tables
+  - def_list
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Overview: getting-started/overview.md
+      - Installation: getting-started/installation.md
+      - Quick Start: getting-started/quickstart.md
+  - Architecture:
+      - System Overview: architecture/overview.md
+      - Job Hierarchy: architecture/jobs.md
+  - Services:
+      - Overview: services/overview.md
+      - Ollama (LLM): services/ollama.md
+      - Redis: services/redis.md
+      - Chroma: services/chroma.md
+      - MySQL: services/mysql.md
+      - Prometheus: services/prometheus.md
+      - Grafana: services/grafana.md
+  - CLI Reference:
+      - Commands: cli/commands.md
+      - Examples: cli/examples.md
+  - Recipes:
+      - Overview: recipes/overview.md
+      - Service Recipes: recipes/services.md
+      - Client Recipes: recipes/clients.md
+      - Writing Custom Recipes: recipes/custom.md
+  - Monitoring:
+      - Overview: monitoring/overview.md
+      - Grafana Dashboards: monitoring/grafana.md
+      - Prometheus Metrics: monitoring/prometheus.md
+  - Development:
+      - Extending the Framework: development/extending.md
+      - Adding New Services: development/new-services.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/ChrisKarg/team10_EUMASTER4HPC2526_challenge
+
+extra_css:
+  - stylesheets/extra.css
+
+extra_javascript:
+  - https://unpkg.com/mermaid@10/dist/mermaid.min.js

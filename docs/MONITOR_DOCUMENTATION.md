@@ -1850,6 +1850,324 @@ python examples/monitor_example.py
 Possible extensions (KEEP IT SIMPLE, only add if really needed):
 - Auto-discovery of service targets
 - Alerting configuration
-- Grafana integration for visualization
 - Metric exporters for services
 - Authentication and security
+
+---
+
+## Grafana Integration
+
+Grafana provides a powerful visualization dashboard for Prometheus metrics. This section explains how to deploy and use Grafana with the HPC Benchmarking Orchestrator.
+
+### Overview
+
+Grafana connects to Prometheus and provides:
+- **Pre-built Dashboards**: Overview and Service Monitoring dashboards
+- **Real-time Visualization**: CPU, memory, network metrics with auto-refresh
+- **Anonymous Access**: No login required for viewing (configurable)
+- **SSH Tunnel Access**: Access via localhost through SSH tunnel
+
+### Architecture
+
+```
+Service Node          Prometheus Node        Grafana Node          Local Machine
++-----------+        +---------------+      +---------------+      +-----------+
+| Service   |        |               |      |               |      |           |
+| (11434)   |        |  Prometheus   |<---->|    Grafana    |<-----|  Browser  |
+|           |        |  (9090)       |      |    (3000)     |      |  :3000    |
+| cAdvisor  |------->|               |      |               |      |           |
+| (8080)    | scrape |               |      | - Dashboards  |      |           |
++-----------+        +---------------+      | - Datasources |      +-----------+
+                                           +---------------+
+                                                  |
+                                             SSH Tunnel
+```
+
+### Quick Start
+
+#### Step 1: Start Prometheus (if not already running)
+
+```bash
+# Start a service with cAdvisor and Prometheus
+python main.py --start-monitoring \
+    recipes/services/ollama_with_cadvisor.yaml \
+    recipes/services/prometheus_with_cadvisor.yaml
+```
+
+Note the Prometheus service ID and host from the output.
+
+#### Step 2: Start Grafana
+
+```bash
+python main.py --recipe recipes/services/grafana.yaml
+```
+
+Output:
+```
+Service started: grafana_abc123
+Submitted SLURM job: 3654321
+```
+
+#### Step 3: Check Status and Get Grafana Host
+
+```bash
+python main.py --status
+```
+
+Output:
+```
+Services:
+   3654320 | prometheus_xyz789    | RUNNING | 5:00 | mel2074
+   3654321 | grafana_abc123       | RUNNING | 0:30 | mel2075
+```
+
+Note the Grafana node: `mel2075`
+
+#### Step 4: Configure Grafana to Connect to Prometheus
+
+Before accessing Grafana, set the Prometheus URL in the environment:
+
+```bash
+# If Prometheus is on mel2074:9090
+export PROMETHEUS_URL="http://mel2074:9090"
+```
+
+Alternatively, you can configure it in the Grafana UI after starting.
+
+#### Step 5: Create SSH Tunnel to Grafana
+
+```bash
+python main.py --create-tunnel grafana_abc123 3000 3000
+```
+
+Output:
+```
+======================================================================
+SSH TUNNEL SETUP
+======================================================================
+To access mel2075:3000 at localhost:3000,
+run the following command in a separate terminal:
+
+  ssh -i ~/.ssh/id_ed25519_mlux -L 3000:mel2075:3000 -N u103227@login.lxp.lu -p 8822
+
+Then access the service at: http://localhost:3000
+======================================================================
+```
+
+Run the SSH command in a separate terminal.
+
+#### Step 6: Access Grafana
+
+Open your browser and navigate to:
+```
+http://localhost:3000
+```
+
+You should see the Grafana login page or the Overview dashboard (if anonymous access is enabled).
+
+**Default Credentials:**
+- Username: `admin`
+- Password: `admin`
+
+### Pre-built Dashboards
+
+The Grafana deployment includes two pre-built dashboards:
+
+#### 1. Overview Dashboard
+
+The default home dashboard showing:
+- **System Status**: Active cAdvisor instances, monitored containers
+- **Resource Summary**: Total memory usage, average CPU usage
+- **CPU Usage by Job**: Time series of CPU usage per job
+- **Memory Usage by Job**: Time series of memory usage per job
+- **Network Traffic**: Receive/transmit rates by job
+- **Scrape Targets Status**: Table showing Prometheus target health
+
+#### 2. Service Monitoring Dashboard
+
+Detailed metrics for individual services:
+- **Container CPU Usage**: Per-container CPU utilization
+- **Container Memory Usage**: Memory consumption over time
+- **Network I/O Rate**: Receive and transmit rates
+- **Filesystem Usage**: Container disk usage
+- **Memory Working Set**: Active memory usage
+- **Memory Usage Percentage**: Gauge showing memory limit utilization
+
+Access via: Dashboard menu → Service Monitoring
+
+### Manual Datasource Configuration
+
+If the Prometheus datasource isn't automatically configured, add it manually:
+
+1. Go to **Configuration** → **Data Sources**
+2. Click **Add data source**
+3. Select **Prometheus**
+4. Configure:
+   - **Name**: `Prometheus`
+   - **URL**: `http://<prometheus_node>:9090` (e.g., `http://mel2074:9090`)
+   - **Access**: `Server (default)`
+5. Click **Save & Test**
+
+### Useful PromQL Queries in Grafana
+
+Use these queries in Grafana panels or the Explore view:
+
+#### Container Metrics
+```promql
+# CPU usage rate
+rate(container_cpu_usage_seconds_total[5m])
+
+# Memory usage
+container_memory_usage_bytes
+
+# Memory usage percentage
+(container_memory_usage_bytes / container_spec_memory_limit_bytes) * 100
+
+# Network receive rate
+rate(container_network_receive_bytes_total[5m])
+
+# Network transmit rate
+rate(container_network_transmit_bytes_total[5m])
+```
+
+#### Aggregated Metrics
+```promql
+# Total CPU usage across all containers
+sum(rate(container_cpu_usage_seconds_total[5m]))
+
+# Total memory usage
+sum(container_memory_usage_bytes)
+
+# Count of running containers
+count(container_cpu_usage_seconds_total)
+```
+
+### Grafana Configuration
+
+The Grafana service is configured via `services/grafana/grafana.ini`:
+
+| Setting | Value | Description |
+|---------|-------|-------------|
+| `http_port` | 3000 | Grafana web UI port |
+| `auth.anonymous.enabled` | true | Allow anonymous access |
+| `auth.anonymous.org_role` | Viewer | Anonymous users get Viewer role |
+| `security.admin_user` | admin | Default admin username |
+| `security.admin_password` | admin | Default admin password |
+
+**For Production Use:**
+- Change the admin password
+- Disable anonymous access: `auth.anonymous.enabled = false`
+- Consider enabling HTTPS
+
+### Complete Session with Grafana
+
+Start a complete monitoring session with Prometheus and Grafana:
+
+```bash
+# 1. Start service with cAdvisor
+python main.py --recipe recipes/services/ollama_with_cadvisor.yaml
+
+# 2. Wait and get service ID
+python main.py --status
+# Note: ollama_abc123 on mel2073
+
+# 3. Start Prometheus (configured to scrape the service)
+python main.py --recipe recipes/services/prometheus_with_cadvisor.yaml
+
+# 4. Wait and get Prometheus ID
+python main.py --status
+# Note: prometheus_xyz789 on mel2074
+
+# 5. Start Grafana
+python main.py --recipe recipes/services/grafana.yaml
+
+# 6. Get Grafana ID
+python main.py --status
+# Note: grafana_def456 on mel2075
+
+# 7. Create SSH tunnels (run in separate terminals)
+# Prometheus tunnel:
+ssh -L 9090:mel2074:9090 -N user@login.lxp.lu -p 8822
+
+# Grafana tunnel:
+ssh -L 3000:mel2075:3000 -N user@login.lxp.lu -p 8822
+
+# 8. Access dashboards
+# Prometheus: http://localhost:9090
+# Grafana: http://localhost:3000
+```
+
+### Troubleshooting Grafana
+
+#### Grafana Won't Start
+
+```bash
+# Check SLURM job status
+python main.py --status
+
+# Check SLURM logs
+ssh login.lxp.lu
+cat slurm-<job_id>.out
+```
+
+#### Cannot Connect to Prometheus
+
+1. Verify Prometheus is running: `python main.py --status`
+2. Check Prometheus is accessible from Grafana node
+3. Verify the Prometheus URL in Grafana datasource settings
+4. Test connection: In Grafana, go to Data Sources → Prometheus → Save & Test
+
+#### No Data in Dashboards
+
+1. Verify cAdvisor is running on service nodes
+2. Check Prometheus targets: http://localhost:9090/targets
+3. Wait 30-60 seconds for initial metric collection
+4. Check time range in Grafana (top right)
+
+#### SSH Tunnel Issues
+
+Same as Prometheus tunnel troubleshooting - see earlier sections.
+
+### Cleanup
+
+```bash
+# Stop Grafana
+python main.py --stop-service grafana_def456
+
+# Stop Prometheus
+python main.py --stop-service prometheus_xyz789
+
+# Stop service
+python main.py --stop-service ollama_abc123
+
+# Or stop all at once
+python main.py --stop-all-services
+```
+
+### File Structure
+
+```
+services/grafana/
+├── Dockerfile                          # Container build file
+├── grafana.ini                         # Grafana configuration
+├── provisioning/
+│   ├── datasources/
+│   │   └── prometheus.yml              # Prometheus datasource config
+│   └── dashboards/
+│       └── default.yml                 # Dashboard provisioning config
+└── dashboards/
+    ├── overview.json                   # Overview dashboard
+    └── service.json                    # Service monitoring dashboard
+```
+
+### Recipe Reference
+
+The Grafana recipe (`recipes/services/grafana.yaml`) includes:
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `container.docker_source` | `docker://grafana/grafana:latest` | Grafana Docker image |
+| `resources.time` | `04:00:00` | SLURM job time limit |
+| `resources.mem` | `4G` | Memory allocation |
+| `ports` | `3000` | Grafana web UI port |
+| `environment.GF_AUTH_ANONYMOUS_ENABLED` | `true` | Enable anonymous access |

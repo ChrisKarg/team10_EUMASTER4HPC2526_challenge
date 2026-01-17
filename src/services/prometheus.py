@@ -54,13 +54,21 @@ class PrometheusService(Service):
             "mkdir -p $HOME/prometheus/data",
             "mkdir -p $HOME/prometheus/config",
             "",
-            "# Create Prometheus configuration",
-            "cat > $HOME/prometheus/config/prometheus.yml << 'EOF'",
+            "# Check if Prometheus config already exists (created by start_all_services.sh)",
+            "if [ -f \"$HOME/prometheus/config/prometheus.yml\" ]; then",
+            "    echo 'Using existing Prometheus configuration:'",
+            "    cat $HOME/prometheus/config/prometheus.yml",
+            "else",
+            "    echo 'Creating default Prometheus configuration...'",
+            "    cat > $HOME/prometheus/config/prometheus.yml << 'EOF'",
             "global:",
             "  scrape_interval: 15s",
             "  evaluation_interval: 15s",
             "",
             "scrape_configs:",
+            "  - job_name: 'prometheus'",
+            "    static_configs:",
+            "      - targets: ['localhost:9090']",
         ])
         
         # Add monitoring targets from recipe
@@ -99,8 +107,10 @@ class PrometheusService(Service):
         
         commands.extend([
             "EOF",
+            "    echo 'Default Prometheus configuration created'",
+            "fi",
             "",
-            "echo 'Prometheus configuration created:'",
+            "echo 'Final Prometheus configuration:'",
             "cat $HOME/prometheus/config/prometheus.yml",
             ""
         ])

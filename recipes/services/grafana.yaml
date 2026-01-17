@@ -1,0 +1,89 @@
+# Grafana Monitoring Dashboard Service
+# Provides visualization dashboards for Prometheus metrics collected from cAdvisor
+#
+# Usage:
+#   1. Start Prometheus first (with cAdvisor targets configured)
+#   2. Start Grafana with this recipe
+#   3. Create SSH tunnel to access the Grafana UI
+#
+# Example:
+#   python main.py --recipe recipes/services/grafana.yaml
+#
+# After starting, create an SSH tunnel:
+#   python main.py --create-tunnel <grafana_service_id> 3000 3000
+#
+# Then access Grafana at: http://localhost:3000
+# Default credentials: admin / admin (or anonymous access enabled)
+
+service:
+  name: grafana
+  description: "Grafana monitoring dashboard for HPC services"
+  
+  # Container configuration
+  container:
+    docker_source: "docker://grafana/grafana:latest"
+    image_path: "$HOME/containers/grafana_latest.sif"
+  
+  # Command to run (Grafana starts automatically)
+  command: grafana-server
+  args:
+    - "--homepath=/usr/share/grafana"
+    - "--config=/etc/grafana/grafana.ini"
+  
+  # SLURM resource allocation (minimal - Grafana is lightweight)
+  resources:
+    time: "04:00:00"          # 4 hours for monitoring session
+    partition: cpu            # CPU partition (no GPU needed)
+    nodes: 1
+    ntasks: 1
+    cpus_per_task: 1
+    mem: "1G"
+  
+  # Environment variables
+  environment:
+    GF_SECURITY_ADMIN_USER: "admin"
+    GF_SECURITY_ADMIN_PASSWORD: "admin"
+    GF_AUTH_ANONYMOUS_ENABLED: "true"
+    GF_AUTH_ANONYMOUS_ORG_ROLE: "Viewer"
+    GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: "/var/lib/grafana/dashboards/overview.json"
+    GF_LOG_MODE: "console"
+    GF_LOG_LEVEL: "info"
+    # Prometheus URL is auto-discovered from SLURM at runtime
+  
+  # Exposed ports
+  ports:
+    - 3000
+  
+  # Health check configuration
+  health_check:
+    endpoint: "http://localhost:3000/api/health"
+    timeout: 30
+    interval: 10
+    retries: 5
+
+  # Custom setup script to configure Grafana with Prometheus
+  setup_script: |
+    # Wait for service to start
+    sleep 5
+    
+    # Check if Grafana is responding
+    echo "Checking Grafana health..."
+    for i in $(seq 1 30); do
+      if curl -s http://localhost:3000/api/health | grep -q "ok"; then
+        echo "Grafana is healthy!"
+        break
+      fi
+      echo "Waiting for Grafana to start... ($i/30)"
+      sleep 2
+    done
+    
+    echo "Grafana dashboard is ready at port 3000"
+    echo "Create an SSH tunnel to access: python main.py --create-tunnel <service_id> 3000 3000"
+
+# Notes:
+# - Grafana will automatically load dashboards from /var/lib/grafana/dashboards/
+# - Pre-configured dashboards include:
+#   - Overview: System status and resource summary
+#   - Service Monitoring: Detailed container metrics (CPU, memory, network)
+# - Anonymous access is enabled for easy viewing via SSH tunnel
+# - For production, change admin password and disable anonymous access

@@ -1,0 +1,41 @@
+# Redis Service Configuration with cAdvisor Monitoring
+service:
+  name: redis
+  description: Redis in-memory database service with cAdvisor for Prometheus monitoring
+  container_image: redis_latest.sif
+  command: redis-server
+  args: ["/redis/config/redis.conf"]
+
+  # Enable cAdvisor for container monitoring
+  enable_cadvisor: true
+  cadvisor_port: 8080
+
+  # Container configuration
+  container:
+    docker_source: "docker://redis:7-alpine"
+    image_path: "$HOME/containers/redis_latest.sif"
+
+  # Resource requirements (SLURM job configuration)
+  resources:
+    time: "02:00:00"
+    qos: default
+    partition: cpu
+    nodes: 1
+    ntasks: 1
+    ntasks_per_node: 1
+    mem: "4GB"
+
+  # Environment variables for Redis configuration
+  environment:
+    REDIS_PERSISTENCE: "both"
+    
+  # Exposed ports
+  ports:
+    - 6379
+
+  # Health check configuration
+  health_check:
+    endpoint: "redis://localhost:6379"
+    timeout: 30
+    retries: 10
+    interval: 3

@@ -41,6 +41,7 @@ from .base import Job, Service, Client, JobFactory
 # Import specific implementations (this triggers registration)
 from .ollama import OllamaService, OllamaClient
 from .prometheus import PrometheusService
+from .grafana import GrafanaService
 from .chroma import ChromaService, ChromaClient
 from .mysql import MySQLService, MySQLClient
 from .redis import RedisService, RedisClient
@@ -54,6 +55,7 @@ __all__ = [
     'OllamaService',
     'OllamaClient',
     'PrometheusService',
+    'GrafanaService',
     'ChromaService',
     'ChromaClient',
     'MySQLService',
